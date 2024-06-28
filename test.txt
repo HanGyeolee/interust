@@ -1,0 +1,10 @@
+let five:i64 = 5;
+let ten:f64 = 10;
+
+fn add(x:i64, y) {
+    return x + y;
+};
+
+let result = add(five, ten);
+result = five * ten;
+result
