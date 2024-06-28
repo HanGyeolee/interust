@@ -1,3 +1,6 @@
 /Cargo.lock
-/target/
+/target/debug
 /.idea/
+target/.rustc_info.json
+target/.rustdoc_fingerprint.json
+target/CACHEDIR.TAG
