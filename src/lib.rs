@@ -18,7 +18,7 @@ use crate::ast::Program;
 use crate::complie::compiler::Compiler;
 use crate::complie::decompiler::Decompiler;
 use crate::interpreter::environment::Environment;
-use crate::interpreter::interpreter::Interpreter;
+use interpreter::InterpreterHigh;
 use crate::object::Object;
 use crate::parser::parser::Parser;
 use crate::token::Token;
@@ -32,9 +32,10 @@ mod complie;
 pub mod object;
 pub mod token;
 pub mod ast;
+mod virtualmachine;
 
 pub struct InterustEngine {
-    interpreter: Interpreter,
+    interpreter: InterpreterHigh,
     compiler: Compiler,
     decompiler: Decompiler,
     program: Program,
@@ -52,7 +53,7 @@ impl InterustEngine {
     /// ```
     pub fn new() -> InterustEngine {
         InterustEngine {
-            interpreter: Interpreter::new(Rc::new(RefCell::new(Environment::new()))),
+            interpreter: InterpreterHigh::new(Rc::new(RefCell::new(Environment::new()))),
             compiler: Compiler::new(),
             decompiler: Decompiler::new(),
             program: Program::new()
@@ -223,7 +224,7 @@ impl InterustEngine {
     ///
     /// # 매개변수
     /// - `file_path` : `&str` 타입, 저장될 파일 위치<br/>
-    /// 파일 확장자는 **.irs**, 반드시 작성할 필요는 없다.
+    /// 파일 확장자는 **.irs**, 반드시 작성할 필요는 없습니다.
     ///
     /// # 예제
     ///
@@ -269,7 +270,7 @@ impl InterustEngine {
     ///
     /// # 매개변수
     /// - `file_path` : `&str` 타입, 저장될 파일 위치<br/>
-    /// 반드시 파일 확장자 **.irs**가 포함되어야 한다.
+    /// 반드시 파일 확장자 **.irs**가 포함되어야 합니다.
     ///
     /// # 예제
     ///

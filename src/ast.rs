@@ -107,34 +107,34 @@ pub enum Prefix {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
-    Let{                                // 0x50 exp[0x52 type] (exp) 0x51
+    Let{                                // 0x50 from to[0x52 addr type]
         variable: Expression,
         expression: Option<Expression>
-    },                                  // ENDLET 0x51
-    Return(Expression),                 // 0x52 exp
+    },
+    Return(Expression),                 // 0x51 exp
     Expression(Expression),
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Variable(String, Type),             // 0x53 scope index type
-    Identifier(String),                 // 0x54 scope index 0|1
-    Insert {                            // 0x55 exp exp
+    Variable(String, Type),             // 0x52 addr type
+    Identifier(String),                 // 변수 로드 = 0x53 addr
+    Insert {                            // 0x54 from to
         variable:  Box<Expression>,
         expression: Box<Expression>
     },
-    If {                                // 0x56 cond cons_length cons (alter_length alter) 0x57
+    If {                                // 0x55 cond cons_length alter_length cons (alter)
         condition: Box<Expression>,
         consequence: Vec<Statement>,
         alternative: Option<Vec<Statement>>,
-    },                                  // ENDIF 0x57
-    Fn {                                // 0x58 scope index return params_length params[0x52 type, 0x52 type, ...] body_length body
+    },
+    Fn {                                // 0x56 addr return params_length body_length params[0x52 type, 0x52 type, ...] body
         identifier: String,
         return_type: Type,
         parameters: Vec<Expression>,
         body: Vec<Statement>,
     },
-    Call {                              // 0x59 [0x53 scope index] 0|1 args_length args[0x53 index, 0x53 index, ...]
+    Call {                              // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
         function: Box<Expression>,
         arguments: Vec<Expression>,
     },

@@ -478,10 +478,6 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if_expression(&mut self) -> Option<Expression> {
-        if !self.expect_peek(&Token::OpenParen) {
-            return None;
-        }
-
         self.consume_token();
 
         let condition = match self.parse_expression(Precedence::Lowest) {
@@ -489,7 +485,7 @@ impl<'a> Parser<'a> {
             None => return None,
         };
 
-        if !self.expect_peek(&Token::CloseParen) || !self.expect_peek(&Token::OpenBrace) {
+        if !self.expect_peek(&Token::OpenBrace) {
             return None;
         }
 

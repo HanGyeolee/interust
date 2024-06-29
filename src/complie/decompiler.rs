@@ -32,11 +32,11 @@ impl Scope {
             functions: HashMap::new(),
         };
 
-        for (name, index) in &self.variables {
+        for (name, (index,_ )) in &self.stack {
             descope.variables.insert(*index, name.clone());
         }
-        for (name, f) in &self.functions {
-            descope.functions.insert(f.index, name.clone());
+        for (name, (index,_ )) in &self.functions {
+            descope.functions.insert(*index, name.clone());
         }
 
         descope
