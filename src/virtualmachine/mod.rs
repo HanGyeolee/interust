@@ -5,6 +5,7 @@ use crate::object::Object;
 
 /// Java Stack 이나 Rust Interpreter 에 대해서 공부하는 게 좋을 것 같다.
 /// CPU 명령이 왜 Stack 을 통해서 동작하는 가
+/// RustC 혹은 Python Compiler
 ///
 /// Interpreter = 고수준 언어로 CPU를 흉내내기 위함
 
@@ -349,7 +350,7 @@ impl VM {
     Insert 삽입문
      */
     fn op_insert_expression(&mut self) {
-        // 0x54 from to
+        // 0x54 from to[0x53 addr]
         self.op_expression();
         let value = self.pop();
         let index = self.op_identifier_expression();

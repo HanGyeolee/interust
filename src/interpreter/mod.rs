@@ -7,13 +7,13 @@ use crate::object::Object;
 pub mod environment;
 
 #[derive(Debug)]
-pub struct InterpreterHigh {
+pub struct Interpreter {
     environment: Rc<RefCell<Environment>>,
 }
 
-impl InterpreterHigh {
+impl Interpreter {
     pub fn new(environment: Rc<RefCell<Environment>>) -> Self {
-        InterpreterHigh {
+        Interpreter {
             environment
         }
     }
@@ -494,13 +494,13 @@ mod tests {
     use std::rc::Rc;
 
     use crate::interpreter::environment::Environment;
-    use crate::interpreter::InterpreterHigh;
+    use crate::interpreter::Interpreter;
     use crate::object::Object;
     use crate::parser::parser::Parser;
     use crate::tokenizer::tokenizer::Tokenizer;
 
     fn eval(input: &str) -> Option<Object> {
-        let mut e = InterpreterHigh::new(Rc::new(RefCell::new(Environment::new())));
+        let mut e = Interpreter::new(Rc::new(RefCell::new(Environment::new())));
         let t = Tokenizer::new(input).tokenize();
         e.eval(Parser::new(&t).parse())
     }
@@ -792,7 +792,7 @@ mod tests {
         ];
 
         for (input, expect) in tests {
-            let mut e = InterpreterHigh::new(Rc::new(RefCell::new(Environment::new())));
+            let mut e = Interpreter::new(Rc::new(RefCell::new(Environment::new())));
             let t = Tokenizer::new(input).tokenize();
             println!("{:?}",t);
             let p = Parser::new(&t).parse();

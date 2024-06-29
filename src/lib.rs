@@ -18,7 +18,7 @@ use crate::ast::Program;
 use crate::complie::compiler::Compiler;
 use crate::complie::decompiler::Decompiler;
 use crate::interpreter::environment::Environment;
-use interpreter::InterpreterHigh;
+use interpreter::Interpreter;
 use crate::object::Object;
 use crate::parser::parser::Parser;
 use crate::token::Token;
@@ -35,7 +35,7 @@ pub mod ast;
 mod virtualmachine;
 
 pub struct InterustEngine {
-    interpreter: InterpreterHigh,
+    interpreter: Interpreter,
     compiler: Compiler,
     decompiler: Decompiler,
     program: Program,
@@ -53,7 +53,7 @@ impl InterustEngine {
     /// ```
     pub fn new() -> InterustEngine {
         InterustEngine {
-            interpreter: InterpreterHigh::new(Rc::new(RefCell::new(Environment::new()))),
+            interpreter: Interpreter::new(Rc::new(RefCell::new(Environment::new()))),
             compiler: Compiler::new(),
             decompiler: Decompiler::new(),
             program: Program::new()
