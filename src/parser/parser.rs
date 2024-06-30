@@ -1,3 +1,4 @@
+use std::ops::Index;
 use crate::ast::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Type};
 use crate::parser::error::{ParseError, ParseErrorKind};
 use crate::token::{Token};
@@ -247,13 +248,24 @@ impl<'a> Parser<'a> {
 
         let mut block = Vec::new();
 
+        let mut return_index:i128 = -1;
         while !self.cur_token_is(&Token::CloseBrace) && !self.cur_token_is(&Token::EOF) {
             match self.parse_statement() {
-                Some(statement) => block.push(statement),
+                Some(statement) => {
+                    match statement {
+                        Statement::Return(_) => return_index = block.len() as i128,
+                        _ => {},
+                    }
+                    block.push(statement)
+                },
                 None => {}
             }
 
             self.consume_token();
+        }
+
+        if -1 < return_index && return_index < block.len() as i128 {
+            block.truncate((return_index + 1) as usize);
         }
 
         block

@@ -116,7 +116,7 @@ impl Interpreter {
                 if Self::is_error(&value) {
                     Some(value)
                 } else {
-                    Some(Object::ReturnValue(value))
+                    Some(Object::ReturnValue(Box::new(value)))
                 }
             }
         }
@@ -468,7 +468,7 @@ impl Interpreter {
         self.environment = current_env;
 
         match object {
-            Some(Object::ReturnValue(object)) => Object::ReturnValue(self.eval_cast(&return_type, &object)),
+            Some(Object::ReturnValue(object)) => Object::ReturnValue(Box::new(self.eval_cast(&return_type, &object))),
             _ => Object::Null,
         }
     }

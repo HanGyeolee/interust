@@ -117,7 +117,7 @@ pub enum Statement {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Expression {
-    Variable(String, Type),             // 0x52 addr type
+    Variable(String, Type),             // 0x52 type
     Identifier(String),                 // 변수 로드 = 0x53 addr
     Insert {                            // 0x54 from to
         variable:  Box<Expression>,
@@ -128,7 +128,7 @@ pub enum Expression {
         consequence: Vec<Statement>,
         alternative: Option<Vec<Statement>>,
     },
-    Fn {                                // 0x56 addr return params_length body_length params[0x52 type, 0x52 type, ...] body
+    Fn {                                // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
         identifier: String,
         return_type: Type,
         parameters: Vec<Expression>,

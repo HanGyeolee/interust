@@ -1,86 +1,91 @@
 use std::fs::File;
 use std::io::Write;
-use crate::complie::compile::{Compile, Compiling, Constant, Scope};
-use crate::complie::decompiler::Descope;
+use crate::complie::compile::{Compile, Compiling};
 use crate::ast::Program;
+use crate::vmobject::{Constant, Scope};
 
 #[derive(Debug)]
 pub struct Compiler;
 
-const MAGIC_NUMBER: &[u8] = b"RVMB";
+pub const MAGIC_NUMBER: &[u8] = b"RVMB";
 
 impl Compiler {
     pub fn new() -> Self {
         Compiler
     }
 
-    pub fn export(&mut self, file_path:&str, program: Program){
+    pub fn compile(&mut self, program: Program) -> Compiling{
         let mut compiling = Compiling::new();
         program.iter().for_each(|stmt| stmt.compile(&mut compiling));
 
-        let mut file = File::create(file_path).expect("파일 생성 실패");
-
-        // File Header
-        file.write_all(MAGIC_NUMBER).expect("매직 넘버 작성 실패");
-        file.write_all(&[0x00, 0x01, 0x00]).expect("파일 버전 크기 작성 실패"); // Version 1
-
-        // Constant Pool
-        self.write_constant_pool(&mut file, &compiling.constant_pool);
-
-        // Code Section
-        self.write_code_section(&mut file, &compiling.bytecode);
-
-        // Scope Information
-        self.write_scope_info(&mut file, &compiling.scopes);
+        compiling
     }
 
-    fn write_constant_pool(&self, file: &mut File, constant_pool: &[Constant]) {
-        file.write_all(&(constant_pool.len() as u16).to_le_bytes()).expect("Failed to write constant pool size");
+    pub fn export(&mut self, file_path:&str, program: Program){
+        let compiling:Compiling = self.compile(program);
+        self.export_from(file_path, &compiling);
+    }
+
+    pub fn export_from(&mut self, file_path:&str, compiling: &Compiling) {
+        let mut byte_code:Vec<u8> = vec![];
+        // File Header
+        byte_code.write_all(MAGIC_NUMBER).expect("매직 넘버 작성 실패");
+        byte_code.write_all(&[0x00, 0x01, 0x00]).expect("파일 버전 크기 작성 실패"); // Version 1
+
+        // Constant Pool
+        self.write_constant_pool(&mut byte_code, &compiling.constants);
+
+        // Code Section
+        self.write_code_section(&mut byte_code, &compiling.bytecode);
+
+        let (first_scope, _) = &compiling.scopes[0];
+        // Scope Information
+        self.write_scope_info(&mut byte_code, first_scope);
+
+        // println!("{:02x?}", byte_code);
+
+        let mut file = File::create(file_path).expect("파일 생성 실패");
+        file.write_all(byte_code.as_slice()).expect("버퍼 작성 실패");
+    }
+
+    fn write_constant_pool(&self, binary: &mut Vec<u8>, constant_pool: &[Constant]) {
+        binary.write_all(&(constant_pool.len() as u16).to_le_bytes()).expect("Failed to write constant pool size");
         for constant in constant_pool {
             match constant {
+                Constant::None => binary.write_all(&[0x01]).expect("상수 타입 작성 실패"),
                 Constant::I64(i) => {
-                    file.write_all(&[0x02]).expect("상수 타입 작성 실패");
-                    file.write_all(&i.to_le_bytes()).expect("정수 값 작성 실패");
+                    binary.write_all(&[0x02]).expect("상수 타입 작성 실패");
+                    binary.write_all(&i.to_le_bytes()).expect("정수 값 작성 실패");
                 }
                 Constant::F64(f) => {
-                    file.write_all(&[0x03]).expect("상수 타입 작성 실패");
-                    file.write_all(&f.to_le_bytes()).expect("부동소수점 값 작성 실패");
+                    binary.write_all(&[0x03]).expect("상수 타입 작성 실패");
+                    binary.write_all(&f.to_le_bytes()).expect("부동소수점 값 작성 실패");
                 }
                 Constant::Bool(b) => {
-                    file.write_all(&[0x0C]).expect("상수 타입 작성 실패");
-                    file.write_all(&[if *b { 1 } else { 0 }]).expect("논리 값 작성 실패");
+                    binary.write_all(&[0x0C]).expect("상수 타입 작성 실패");
+                    binary.write_all(&[if *b { 1 } else { 0 }]).expect("논리 값 작성 실패");
                 }
                 Constant::String(s) => {
-                    file.write_all(&[0x0F]).expect("상수 타입 작성 실패");
-                    file.write_all(&(s.len() as u32).to_le_bytes()).expect("문자열 크기 작성 실패");
-                    file.write_all(s.as_bytes()).expect("문자열 값 작성 실패");
+                    binary.write_all(&[0x0F]).expect("상수 타입 작성 실패");
+                    binary.write_all(&(s.len() as u32).to_le_bytes()).expect("문자열 크기 작성 실패");
+                    binary.write_all(s.as_bytes()).expect("문자열 값 작성 실패");
                 }
             }
         }
     }
 
-    fn write_code_section(&self, file: &mut File, bytecode: &[u8]) {
-        file.write_all(&(bytecode.len() as u32).to_le_bytes()).expect("바이트 코드 크기 작성 실패");
-        file.write_all(bytecode).expect("바이트 코드 작성 실패");
+    fn write_code_section(&self, binary: &mut Vec<u8>, bytecode: &[u8]) {
+        binary.write_all(&bytecode.len().to_le_bytes()).expect("바이트 코드 크기 작성 실패");
+        binary.write_all(bytecode).expect("바이트 코드 작성 실패");
     }
 
-    fn write_scope_info(&self, file: &mut File, scopes: &[Scope]) {
-        file.write_all(&(scopes.len() as u16).to_le_bytes()).expect("스코프 크기 작성 실패");
-        for scope in scopes {
-            file.write_all(&(scope.stack.len() as u16).to_le_bytes()).expect("변수 개수 작성 실패");
-            for (name, (addr, typ)) in &scope.stack {
-                file.write_all(&(name.len() as u8).to_le_bytes()).expect("변수 식별자 크기 작성 실패");
-                file.write_all(name.as_bytes()).expect("변수 식별자 작성 실패");
-                file.write_all(&(*addr as u16).to_le_bytes()).expect("변수 주소 작성 실패");
-                file.write_all(&[typ.clone() as u8]).expect("변수 타입 작성 실패");
-            }
-            file.write_all(&(scope.functions.len() as u16).to_le_bytes()).expect("함수 개수 작성 실패");
-            for (name, (addr, typ)) in &scope.functions {
-                file.write_all(&(name.len() as u8).to_le_bytes()).expect("함수 식별자 크기 작성 실패");
-                file.write_all(name.as_bytes()).expect("함수 식별자 작성 실패");
-                file.write_all(&(*addr as u16).to_le_bytes()).expect("함수 주소 작성 실패");
-                file.write_all(&[typ.clone() as u8]).expect("함수 타입 작성 실패");
-            }
+    fn write_scope_info(&self, binary: &mut Vec<u8>, scope: &Scope) {
+        binary.write_all(&(scope.stack.len() as u16).to_le_bytes()).expect("식별자 개수 작성 실패");
+        for (name, (addr, typ)) in &scope.stack {
+            binary.write_all(&(name.len() as u8).to_le_bytes()).expect("식별자 문자열 크기 작성 실패");
+            binary.write_all(name.as_bytes()).expect("식별자 문자열 작성 실패");
+            binary.write_all(&(*addr as u16).to_le_bytes()).expect("식별자 주소 작성 실패");
+            binary.write_all(&[typ.clone() as u8]).expect("식별자 타입 작성 실패");
         }
     }
 }
@@ -115,7 +120,7 @@ mod test {
         println!("{:02x?}", program);
 
         let mut compiler = Compiler::new();
-        let (_,byte_code) = compiler.compile(&program);
+        let byte_code = compiler.compile(program);
 
         println!("{:?}", byte_code);
     }

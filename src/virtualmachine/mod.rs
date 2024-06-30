@@ -1,48 +1,33 @@
-use std::collections::HashMap;
+use std::cell::Ref;
 use std::ops::Add;
-use crate::ast::{Expression, Infix, Prefix, Type};
-use crate::object::Object;
-
-/// Java Stack 이나 Rust Interpreter 에 대해서 공부하는 게 좋을 것 같다.
-/// CPU 명령이 왜 Stack 을 통해서 동작하는 가
-/// RustC 혹은 Python Compiler
-///
-/// Interpreter = 고수준 언어로 CPU를 흉내내기 위함
+use crate::ast::Type;
+use crate::vmobject::{Scope, VMObejct};
 
 
-#[derive(Debug, Clone)]
-enum Value {
-    Null,
-    I64(i64),
-    F64(f64),
-    Bool(bool),
-    String(String),
-    Function(usize), // 함수의 시작 주소
-    Error(String)
-}
-
-struct VM {
-    constants: Vec<Value>,
-    stack: Vec<Value>,
+pub struct VM {
+    constants: Vec<VMObejct>,
+    register: Vec<VMObejct>,
+    stack: Vec<VMObejct>,
     call_stack: Vec<CallFrame>,
-    ip: usize, // Instruction pointer
+    ip: usize,                  // Instruction pointer
     bytecode: Vec<u8>,
 }
 
 struct CallFrame {
-    function_index: usize,  // ??????
-    ip: usize,              // 바이트 코드 인덱스
-    base_pointer: usize,    // 함수의 스택 프레임 위치
+    function_index: usize,  // 함수 시작 주소
+    return_address: usize,  // 종료 후 주소
+    base_pointer: usize,    // 함수 내부에서 사용하는 스택 부분
 }
 
 impl VM {
-    fn new(bytecode: Vec<u8>, constants: Vec<Value>) -> Self {
+    pub fn new() -> Self {
         VM {
-            constants,
+            constants: Vec::new(),
+            register: Vec::new(),
             stack: Vec::new(),
             call_stack: Vec::new(),
             ip: 0,
-            bytecode,
+            bytecode: Vec::new(),
         }
     }
 
@@ -57,12 +42,23 @@ impl VM {
         value
     }
 
-    fn push(&mut self, value: Value){
+    fn push_stack(&mut self, value: VMObejct){
         self.stack.push(value);
     }
-
-    fn pop(&mut self) -> Value {
+    fn truncate_stack(&mut self, len: usize) {
+        // len 만 남기고 뒤에는 삭제
+        self.stack.truncate(len);
+    }
+    fn pop_stack(&mut self) -> VMObejct {
         self.stack.pop().expect("Stack underflow")
+    }
+
+    fn push_register(&mut self, value: VMObejct){
+        self.register.push(value);
+    }
+
+    fn pop_register(&mut self) -> VMObejct {
+        self.register.pop().expect("Stack underflow")
     }
 
     fn op_type(&mut self) -> Type {
@@ -81,14 +77,28 @@ impl VM {
         }
     }
 
-    fn is_error(object: &Value) -> bool {
+    fn is_truthy(object: VMObejct) -> bool {
         match object {
-            Value::Error(_) => true,
+            VMObejct::Null | VMObejct::Bool(false) | VMObejct::I64(0) => false,
+            VMObejct::F64(v) => v < f64::EPSILON || v > -f64::EPSILON,
+            _ => true
+        }
+    }
+
+    fn is_error(object: &VMObejct) -> bool {
+        match object {
+            VMObejct::Error(_) => true,
             _ => false,
         }
     }
 
-    fn run(&mut self) {
+    pub fn run(&mut self, bytecode: Vec<u8>, constants: Vec<VMObejct>) {
+        self.bytecode = bytecode;
+        self.constants = constants;
+        self.rerun();
+    }
+
+    pub fn rerun(&mut self) {
         while self.ip < self.bytecode.len() {
             self.op_statement();
         }
@@ -99,28 +109,27 @@ impl VM {
         match opcode {
             0x50 => self.op_let_statement(),
             0x51 => self.op_return_statement(),
-            _ => self.op_expression(),
+            code => self.op_expression(code),
         }
     }
 
     fn op_let_statement(&mut self) {
         // from to[0x52 addr type]
-        self.op_expression()
-            .unwrap_or_else(|| Value::Error(String::from("RuntimeError: let의 초기화 값에 오류가 있습니다.")));
+        self.op_expression_read();//.unwrap_or_else(|| VMObejct::Error(String::from("RuntimeError: let의 초기화 값에 오류가 있습니다.")));
         self.op_define_variable();
     }
 
     fn op_return_statement(&mut self) {
-        let return_value = self.pop();
+        // 0x51 exp
+        self.op_expression_read();
         let frame = self.call_stack.pop().expect("Call Stack Underflow");
-        self.ip = frame.ip;
-        self.stack.truncate(frame.base_pointer);
-        self.push(return_value);
+        self.ip = frame.return_address;
+        self.truncate_stack(frame.base_pointer);
     }
 
-    fn op_expression(&mut self){
-        let opcode = self.read_byte();
+    fn op_expression(&mut self, opcode:u8) {
         match opcode {
+            0x53 => self.op_identifier_expression(),
             0x54 => self.op_insert_expression(),
             0x55 => self.op_if_expression(),
             0x56 => self.op_function_expression(),
@@ -130,13 +139,23 @@ impl VM {
             0x5A => self.op_prefix(),
             0xFF => break, // Halt*/
             0x01..=0x0F => self.op_literal_expression(),
-            0x20..=0x2C => self.op_infix_expression(),
-            0x40..=0x41 => self.op_prefix_expression(),
+            0x20..=0x2C => self.op_infix_expression(opcode),
+            0x40..=0x41 => self.op_prefix_expression(opcode),
             _ => panic!("RuntimeError: 알 수 없는 바이트 코드: {}", opcode),
         };
     }
+    fn op_expression_read(&mut self){
+        let opcode = self.read_byte();
+        self.op_expression(opcode)
+    }
 
-    fn op_identifier_expression(&mut self) -> usize{
+    fn op_identifier_expression(&mut self){
+        // 변수 로드 = addr
+        let var_index = self.read_u16() as usize;
+        self.push_register(self.stack[var_index].clone());
+    }
+
+    fn op_load_variable(&mut self) -> usize{
         // 0x53 변수 로드 = addr
         let opcode = self.read_byte();
         match opcode {
@@ -146,32 +165,30 @@ impl VM {
     }
 
     fn op_define_variable(&mut self){
-        // 0x52 addr type
+        // 0x52 type
         let opcode = self.read_byte();
         match opcode {
             0x52 => {
-                self.read_u16();
                 let typ = self.op_type();
 
-                let value = self.pop();
+                let value = self.pop_register();
                 let cast = self.cast(&typ, &value);
-                self.push(cast);
+                self.push_stack(cast);
             },
             _ => panic!("RuntimeError: 알 수 없는 바이트 코드: {}", opcode),
         }
     }
 
     fn op_function_expression(&mut self) {
-        // addr return params_length body_length params[0x52 type, 0x52 type, ...] body
-        self.read_u16();
+        // return params_length body_length| params[0x52 type, 0x52 type, ...] body
         let return_type = self.read_byte();
-        let param_count = self.read_u16();
+        let param_count = self.read_u16() as usize;
         let body_size = self.read_u16() as usize;
 
-        self.push(Value::Function(self.ip));
+        self.push_stack(VMObejct::Fn(self.ip, param_count, body_size));
 
         // Store function metadata if needed
-        self.ip += param_count + body_size; // 매개변수와 바디 크기 만큼 일단 패스
+        self.ip += 2 * param_count + body_size; // 매개변수와 바디 크기 만큼 일단 패스
     }
 
     /**
@@ -179,149 +196,147 @@ impl VM {
      */
     fn op_literal_expression(&mut self){
         let constant_index = self.read_u16() as usize;
-        self.stack.push(self.constants[constant_index].clone());
+        self.push_register(self.constants[constant_index].clone());
     }
 
     /**
     접두사 연산
      */
-    fn op_prefix_expression(&mut self) {
-        let operator = self.read_byte();
-        let right = self.pop();
-        let result = match operator {
+    fn op_prefix_expression(&mut self, prefix:u8) {
+        let right = self.pop_register();
+        let result = match prefix {
             0x40 => self.op_minus_prefix_expression(right),
             0x41 => self.op_not_operator_expression(right),
             _ => panic!("RuntimeError: 잘못된 접두사 연산자"),
         };
-        self.push(result);
+        self.push_register(result);
     }
 
     /**
     Not 접두사 연산
      */
-    fn op_not_operator_expression(&mut self, right: Value) -> Value {
-        Value::Bool(!Self::is_truthy(right))
+    fn op_not_operator_expression(&mut self, right: VMObejct) -> VMObejct {
+        VMObejct::Bool(!VM::is_truthy(right))
     }
 
     /**
     음수 접두사 연산
      */
-    fn op_minus_prefix_expression(&mut self, right: Value) -> Value {
+    fn op_minus_prefix_expression(&mut self, right: VMObejct) -> VMObejct {
         match right {
-            Value::F64(value) => Value::F64(-value),
-            Value::I64(value) => Value::I64(-value),
-            _ => Value::Error(format!("RuntimeError: Unknown operator: -{right}")),
+            VMObejct::F64(value) => VMObejct::F64(-value),
+            VMObejct::I64(value) => VMObejct::I64(-value),
+            _ => VMObejct::Error(format!("RuntimeError: Unknown operator: -{right}")),
         }
     }
 
-    fn op_infix_expression(&mut self){
-        let infix = self.read_byte();
-        self.op_expression();
-        self.op_expression();
-        let right = self.pop();
-        let left = self.pop();
+    fn op_infix_expression(&mut self, infix:u8){
+        self.op_expression_read();
+        self.op_expression_read();
+        let right = self.pop_register();
+        let left = self.pop_register();
         let result = match left {
-            Value::I64(left_value) => {
+            VMObejct::I64(left_value) => {
                 match right {
-                    Value::I64(right_value) => self.op_infix_i64_expression(infix, left_value, right_value),
-                    Value::F64(right_value) => self.op_infix_f64_expression(infix, left_value as f64, right_value),
-                    Value::String(right_value) => self.op_infix_string_expression(infix, left_value.to_string(), right_value),
-                    _ => Value::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
+                    VMObejct::I64(right_value) => self.op_infix_i64_expression(infix, left_value, right_value),
+                    VMObejct::F64(right_value) => self.op_infix_f64_expression(infix, left_value as f64, right_value),
+                    VMObejct::String(ref right_value) => self.op_infix_string_expression(infix, &left_value.to_string(), right_value),
+                    _ => VMObejct::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
                 }
             }
-            Value::F64(left_value) => {
+            VMObejct::F64(left_value) => {
                 match right {
-                    Value::F64(right_value) => self.op_infix_f64_expression(infix, left_value, right_value),
-                    Value::I64(right_value) => self.op_infix_f64_expression(infix, left_value, right_value as f64),
-                    Value::String(right_value) => self.op_infix_string_expression(infix, left_value.to_string(), right_value),
-                    _ => Value::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
+                    VMObejct::F64(right_value) => self.op_infix_f64_expression(infix, left_value, right_value),
+                    VMObejct::I64(right_value) => self.op_infix_f64_expression(infix, left_value, right_value as f64),
+                    VMObejct::String(ref right_value) => self.op_infix_string_expression(infix, &left_value.to_string(), right_value),
+                    _ => VMObejct::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
                 }
             }
-            Value::Bool(left_value) => {
+            VMObejct::Bool(left_value) => {
                 match right {
-                    Value::Bool(right_value) => self.op_infix_bool_expression(infix, left_value, right_value),
-                    Value::String(right_value) => self.op_infix_string_expression(infix, left_value.to_string(), right_value),
-                    _ => Value::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
+                    VMObejct::Bool(right_value) => self.op_infix_bool_expression(infix, left_value, right_value),
+                    VMObejct::String(ref right_value) => self.op_infix_string_expression(infix, &left_value.to_string(), right_value),
+                    _ => VMObejct::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
                 }
             }
-            Value::String(left_value) => {
+            VMObejct::String(ref left_value) => {
                 match right {
-                    Value::I64(right_value) => self.op_infix_string_expression(infix, left_value, right_value.to_string()),
-                    Value::F64(right_value) => self.op_infix_string_expression(infix, left_value, right_value.to_string()),
-                    Value::Bool(right_value) => self.op_infix_string_expression(infix, left_value, right_value.to_string()),
-                    Value::String(right_value) => self.op_infix_string_expression(infix, left_value, right_value),
-                    _ => Value::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
+                    VMObejct::I64(right_value) => self.op_infix_string_expression(infix, left_value, &right_value.to_string()),
+                    VMObejct::F64(right_value) => self.op_infix_string_expression(infix, left_value, &right_value.to_string()),
+                    VMObejct::Bool(right_value) => self.op_infix_string_expression(infix, left_value, &right_value.to_string()),
+                    VMObejct::String(ref right_value) => self.op_infix_string_expression(infix, left_value, right_value),
+                    _ => VMObejct::Error(format!("RuntimeError: 타입 매칭 불가: {left} {infix} {right}")),
                 }
             }
-            _ => Value::Error(format!("RuntimeError: 잘못된 연산자: {left} {infix} {right}")),
+            _ => VMObejct::Error(format!("RuntimeError: 잘못된 연산자: {left} {infix} {right}")),
         };
-        self.stack.push(result);
+        self.push_register(result);
     }
 
     /**
     I64 계산 방식 연산
      */
-    fn op_infix_integer_expression(
+    fn op_infix_i64_expression(
         &mut self,
         infix: u8,
         left_value: i64,
         right_value: i64,
-    ) -> Value {
+    ) -> VMObejct {
         match infix {
-            0x20 => Value::I64(left_value + right_value),
-            0x21 => Value::I64(left_value - right_value),
-            0x22 => Value::I64(left_value * right_value),
-            0x23 => Value::I64(left_value / right_value),
-            0x24 => Value::I64(left_value % right_value),
-            0x25 => Value::Bool(left_value == right_value),
-            0x26 => Value::Bool(left_value != right_value),
-            0x27 => Value::Bool(left_value < right_value),
-            0x28 => Value::Bool(left_value > right_value),
-            0x2B => Value::I64(left_value & right_value),
-            0x2C => Value::I64(left_value | right_value),
-            _ => Value::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
+            0x20 => VMObejct::I64(left_value + right_value),
+            0x21 => VMObejct::I64(left_value - right_value),
+            0x22 => VMObejct::I64(left_value * right_value),
+            0x23 => VMObejct::I64(left_value / right_value),
+            0x24 => VMObejct::I64(left_value % right_value),
+            0x25 => VMObejct::Bool(left_value == right_value),
+            0x26 => VMObejct::Bool(left_value != right_value),
+            0x27 => VMObejct::Bool(left_value < right_value),
+            0x28 => VMObejct::Bool(left_value > right_value),
+            0x2B => VMObejct::I64(left_value & right_value),
+            0x2C => VMObejct::I64(left_value | right_value),
+            _ => VMObejct::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
         }
     }
 
     /**
     F64 계산 방식 연산
      */
-    fn op_infix_float_expression(
+    fn op_infix_f64_expression(
         &mut self,
         infix: u8,
         left_value: f64,
         right_value: f64,
-    ) -> Value {
+    ) -> VMObejct {
         match infix {
-            0x20 => Value::F64(left_value + right_value),
-            0x21 => Value::F64(left_value - right_value),
-            0x22 => Value::F64(left_value * right_value),
-            0x23 => Value::F64(left_value / right_value),
-            0x25 => Value::Bool(left_value == right_value),
-            0x26 => Value::Bool(left_value != right_value),
-            0x27 => Value::Bool(left_value < right_value),
-            0x28 => Value::Bool(left_value > right_value),
-            _ => Value::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
+            0x20 => VMObejct::F64(left_value + right_value),
+            0x21 => VMObejct::F64(left_value - right_value),
+            0x22 => VMObejct::F64(left_value * right_value),
+            0x23 => VMObejct::F64(left_value / right_value),
+            0x25 => VMObejct::Bool(left_value == right_value),
+            0x26 => VMObejct::Bool(left_value != right_value),
+            0x27 => VMObejct::Bool(left_value < right_value),
+            0x28 => VMObejct::Bool(left_value > right_value),
+            _ => VMObejct::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
         }
     }
 
     /**
     논리 계산 방식 연산
      */
-    fn op_infix_boolean_expression(
+    fn op_infix_bool_expression(
         &mut self,
         infix: u8,
         left_value: bool,
         right_value: bool,
-    ) -> Value {
+    ) -> VMObejct {
         match infix {
-            0x25 => Value::Bool(left_value == right_value),
-            0x26 => Value::Bool(left_value != right_value),
-            0x29 => Value::Bool(left_value && right_value),
-            0x2A => Value::Bool(left_value || right_value),
-            0x2B => Value::Bool(left_value & right_value),
-            0x2C => Value::Bool(left_value | right_value),
-            _ => Value::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
+            0x25 => VMObejct::Bool(left_value == right_value),
+            0x26 => VMObejct::Bool(left_value != right_value),
+            0x29 => VMObejct::Bool(left_value && right_value),
+            0x2A => VMObejct::Bool(left_value || right_value),
+            0x2B => VMObejct::Bool(left_value & right_value),
+            0x2C => VMObejct::Bool(left_value | right_value),
+            _ => VMObejct::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
         }
     }
 
@@ -331,18 +346,16 @@ impl VM {
     fn op_infix_string_expression(
         &mut self,
         infix: u8,
-        left_value: String,
-        right_value: String
-    ) -> Value {
+        left_value: &String,
+        right_value: &String
+    ) -> VMObejct {
         match infix {
-            0x20 => Value::String(left_value.clone().add(right_value.as_str())),
-            0x25 => Value::Bool(left_value == right_value),
-            0x26 => Value::Bool(left_value != right_value),
-            0x27 => Value::Bool(left_value > right_value),
-            0x28 => Value::Bool(left_value < right_value),
-            0x29 => Value::Bool(left_value && right_value),
-            0x2A => Value::Bool(left_value || right_value),
-            _ => Value::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
+            0x20 => VMObejct::String(left_value.clone().add(right_value.as_str())),
+            0x25 => VMObejct::Bool(left_value == right_value),
+            0x26 => VMObejct::Bool(left_value != right_value),
+            0x27 => VMObejct::Bool(left_value > right_value),
+            0x28 => VMObejct::Bool(left_value < right_value),
+            _ => VMObejct::Error(format!("RuntimeError: Unknown operator: {left_value} {infix} {right_value}")),
         }
     }
 
@@ -351,40 +364,40 @@ impl VM {
      */
     fn op_insert_expression(&mut self) {
         // 0x54 from to[0x53 addr]
-        self.op_expression();
-        let value = self.pop();
-        let index = self.op_identifier_expression();
+        self.op_expression_read();
+        let value = self.pop_register();
+        let index = self.op_load_variable();
         self.stack[index] = value;
     }
 
     /**
     Type 에 맞게 Value Casting
      */
-    fn cast(&mut self, typ: &Type, object: &Value) -> Value{
+    fn cast(&mut self, typ: &Type, object: &VMObejct) -> VMObejct {
         match typ {
             Type::F64 => match object {
-                Value::F64(v) => Value::F64(v.clone()),
-                Value::I64(v) => Value::F64(v.clone() as f64),
-                Value::Bool(v) => Value::F64(if v.clone() { 1.0 } else { 0.0 }),
-                _ => Value::Error(format!(
+                VMObejct::F64(v) => VMObejct::F64(v.clone()),
+                VMObejct::I64(v) => VMObejct::F64(v.clone() as f64),
+                VMObejct::Bool(v) => VMObejct::F64(if v.clone() { 1.0 } else { 0.0 }),
+                _ => VMObejct::Error(format!(
                     "형 변환 불가: {object} -> {typ}",
                 )),
             }
             Type::I64 => match object {
-                Value::F64(v) => Value::I64(v.clone() as i64),
-                Value::I64(v) => Value::I64(v.clone()),
-                Value::Bool(v) => Value::I64(if v.clone() { 1 } else { 0 }),
-                _ => Value::Error(format!(
+                VMObejct::F64(v) => VMObejct::I64(v.clone() as i64),
+                VMObejct::I64(v) => VMObejct::I64(v.clone()),
+                VMObejct::Bool(v) => VMObejct::I64(if v.clone() { 1 } else { 0 }),
+                _ => VMObejct::Error(format!(
                     "형 변환 불가: {object} -> {typ}",
                 )),
             }
             Type::String => match object {
-                Value::String(v) => Value::String(v.clone()),
-                _ => Value::Error(format!(
+                VMObejct::String(v) => VMObejct::String(v.clone()),
+                _ => VMObejct::Error(format!(
                     "형 변환 불가: {object} -> {typ}",
                 )),
             }
-            Type::Bool => Value::Bool(Self::is_truthy(object.clone())),
+            Type::Bool => VMObejct::Bool(Self::is_truthy(object.clone())),
             Type::None => object.clone()
         }
     }
@@ -393,18 +406,19 @@ impl VM {
      IF 조건문 연산
      */
     fn op_if_expression(&mut self) {
-        self.op_expression();
-        let condition = self.pop();
+        // 0x55 cond cons_size alter_size cons (alter)
+        self.op_expression_read();
+        let condition = self.pop_register();
         let true_branch_size = self.read_u16() as usize;
         let false_branch_size = self.read_u16() as usize;
 
         match condition {
-            Value::Bool(true) => {
+            VMObejct::Bool(true) => {
                 // Execute true branch
                 self.execute_block(true_branch_size);
                 self.ip += false_branch_size; // Skip false branch
             }
-            Value::Bool(false) => {
+            VMObejct::Bool(false) => {
                 self.ip += true_branch_size; // Skip true branch
                 self.execute_block(false_branch_size);
             }
@@ -413,18 +427,42 @@ impl VM {
     }
 
     fn op_call_expression(&mut self) {
-        // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
+        // addr args_length args[0x53 index, 0x53 index, ...]
         let function_index = self.read_u16() as usize;
         let arg_count = self.read_u16() as usize;
 
-        // clone 최대한 자제
-        let function = self.stack[function_index].clone();
+        for _ in 0..arg_count {
+            self.op_expression_read();
+        }
 
-        match function {
-            Value::Function(index) => {
-                self.call_function(index, arg_count);
+        match self.stack[function_index] {
+            VMObejct::Fn(index, param_count, body_size) => {
+                self.call_function_inner(index, arg_count, body_size);
             }
-            _ => panic!("Can only call functions"),
+            _ => panic!("RuntimeError: 함수 이외 호출 불가능"),
+        }
+    }
+
+    fn call_function_inner(&mut self, function_index: usize, arg_count: usize, body_size: usize) {
+        let return_address = self.ip;
+        let frame = CallFrame {
+            function_index,
+            return_address,
+            base_pointer: self.stack.len(),
+        };
+        self.call_stack.push(frame);
+        self.ip = function_index;
+        // params[0x52 type, 0x52 type, ...] body
+        for _ in 0..arg_count {
+            self.op_define_variable();
+        }
+        self.execute_block(body_size);
+
+        // return 명령어가 없는 void 를 출력하는 함수일 경우
+        if self.ip != return_address {
+            let frame = self.call_stack.pop().expect("Call Stack Underflow");
+            self.ip = frame.return_address;
+            self.truncate_stack(frame.base_pointer);
         }
     }
 
@@ -434,15 +472,126 @@ impl VM {
             self.op_statement();
         }
     }
+}
 
-    fn call_function(&mut self, function_index: usize, arg_count: usize) {
-        let frame = CallFrame {
-            function_index,
-            ip: self.ip,
-            base_pointer: self.stack.len() - arg_count,
-        };
-        self.call_stack.push(frame);
-        // Set IP to function start (you need to store function locations)
-        // self.ip = function_start_address;
+pub struct BytecodeEngine {
+    virtual_machine:VM,
+    constants: Vec<VMObejct>,
+    bytecode: Vec<u8>,
+    scope:Scope
+}
+
+impl BytecodeEngine {
+    pub fn new() -> Self {
+        BytecodeEngine {
+            virtual_machine:VM::new(),
+            constants: Vec::new(),
+            bytecode: Vec::new(),
+            scope: Scope::new()
+        }
+    }
+
+    pub fn run(&mut self) {
+        self.virtual_machine.run(self.bytecode.clone(), self.constants.clone());
+    }
+
+    pub fn set(&mut self, constants: Vec<VMObejct>,
+               bytecode: Vec<u8>,
+               scope:Scope) {
+        self.constants = constants;
+        self.bytecode = bytecode;
+        self.scope = scope;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::complie::compiler::Compiler;
+    use crate::parser::parser::Parser;
+    use crate::tokenizer::tokenizer::Tokenizer;
+    use crate::virtualmachine::VM;
+    use crate::vmobject::VMObejct;
+
+    #[test]
+    fn test_set_constant(){
+        let input = r#"
+            let five:i64 = 5;
+            let ten:f64 = 10;
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+
+        let mut compiler = Compiler::new();
+        let compiled = compiler.compile(program);
+        println!("{:02x?}", compiled.bytecode);
+
+        let mut vm:VM = VM::new();
+        vm.run(compiled.bytecode, vec![
+            VMObejct::I64(5), VMObejct::I64(10)
+        ]);
+        println!("{:?}", vm.stack);
+    }
+
+    #[test]
+    fn test_function_use(){
+        let input = r#"
+            fn add(x:i64, y) -> i64 {
+                return x + y;
+            }
+            let result = add(0, 1);
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+
+        let mut compiler = Compiler::new();
+        let compiled = compiler.compile(program);
+        println!("{:02x?}", compiled.bytecode);
+
+        let mut virtual_m:VM = VM::new();
+        virtual_m.run(compiled.bytecode, vec![
+            VMObejct::I64(0), VMObejct::I64(1)
+        ]);
+        println!("{:?}", virtual_m.stack);
+    }
+
+    #[test]
+    fn test_all(){
+        let input = r#"
+            let five:i64 = 5;
+            let ten:f64 = 10.0;
+            fn add(x:i64, y) -> i64 {
+                return x + y;
+            }
+            let result = add(five, 1);
+            result = result * ten;
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+
+        let mut compiler = Compiler::new();
+        let compiled = compiler.compile(program);
+        println!("{:02x?}", compiled.bytecode);
+
+        let mut virtual_m:VM = VM::new();
+        virtual_m.run(compiled.bytecode, vec![
+            VMObejct::I64(5), VMObejct::F64(10.0), VMObejct::I64(1)
+        ]);
+        println!("{:?}", virtual_m.stack);
+        println!("{:?}", virtual_m.register);
     }
 }

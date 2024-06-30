@@ -13,16 +13,19 @@
 //!
 
 use std::cell::RefCell;
+use std::fs::File;
+use std::io::Read;
 use std::rc::Rc;
-use crate::ast::Program;
-use crate::complie::compiler::Compiler;
-use crate::complie::decompiler::Decompiler;
+use crate::ast::{Program, Type};
+use crate::complie::compiler::{Compiler, MAGIC_NUMBER};
 use crate::interpreter::environment::Environment;
 use interpreter::Interpreter;
 use crate::object::Object;
 use crate::parser::parser::Parser;
 use crate::token::Token;
 use crate::tokenizer::tokenizer::Tokenizer;
+use crate::virtualmachine::{BytecodeEngine, VM};
+use crate::vmobject::{Constant, Scope, VMObejct};
 
 mod tokenizer;
 mod parser;
@@ -33,11 +36,12 @@ pub mod object;
 pub mod token;
 pub mod ast;
 mod virtualmachine;
+mod vmobject;
 
 pub struct InterustEngine {
+    bytecode_engine:BytecodeEngine,
     interpreter: Interpreter,
     compiler: Compiler,
-    decompiler: Decompiler,
     program: Program,
 }
 
@@ -51,11 +55,11 @@ impl InterustEngine {
     ///
     /// let mut interust = InterustEngine::new();
     /// ```
-    pub fn new() -> InterustEngine {
+    pub fn new() -> Self {
         InterustEngine {
             interpreter: Interpreter::new(Rc::new(RefCell::new(Environment::new()))),
+            bytecode_engine: BytecodeEngine::new(),
             compiler: Compiler::new(),
-            decompiler: Decompiler::new(),
             program: Program::new()
         }
     }
@@ -265,28 +269,6 @@ impl InterustEngine {
         self.export_from_tokens(file_path, &tokens);
     }
 
-    /// 인터프리터에서 컴파일된 바이트 코드 파일을 읽고 추상 구문 트리(AST)로 디컴파일합니다.
-    /// 디컴파일링으로 들어온 새로운 코드를 `self.program` 에 이어 붙입니다.
-    ///
-    /// # 매개변수
-    /// - `file_path` : `&str` 타입, 저장될 파일 위치<br/>
-    /// 반드시 파일 확장자 **.irs**가 포함되어야 합니다.
-    ///
-    /// # 예제
-    ///
-    /// ```
-    /// use interust::InterustEngine;
-    /// use interust::object::Object;
-    ///
-    /// let mut interust = InterustEngine::new();
-    /// interust.import("test.irs");
-    /// ```
-    pub fn import(&mut self, file_path:&str) {
-        let (program, log) = self.decompiler.import(file_path);
-        println!("{}", log);
-        self.program.extend(program);
-    }
-
     /// 인터프리터에서 `self.program`에 저장된 전체 추상 구문 트리(AST)를 처음부터 실행합니다.
     ///
     /// # 예제
@@ -296,11 +278,146 @@ impl InterustEngine {
     /// use interust::object::Object;
     ///
     /// let mut interust = InterustEngine::new();
-    /// interust.import("test.irs");
-    /// interust.run();
+    /// interust.run_interpreter();
     /// ```
-    pub fn run(&mut self) -> Option<Object> {
+    pub fn run_interpreter(&mut self) -> Option<Object> {
         self.interpreter.eval(self.program.clone())
+    }
+
+    pub fn run_compiled(&mut self) {
+        self.bytecode_engine.run();
+    }
+
+    pub fn import_compiled(&mut self, file_path:&str) {
+        let mut log:String = String::from(file_path);
+
+        let mut open = File::open(file_path)
+            .expect(format!("해당 \"{0}\" 파일을 찾을 수 없습니다.", file_path).as_str());
+        let mut file = Vec::new();
+        open.read_to_end(&mut file)
+            .expect(format!("해당 \"{0}\" 파일을 읽을 수 없습니다.", file_path).as_str());
+
+        let mut index =MAGIC_NUMBER.len();
+        if MAGIC_NUMBER != file[0..index].to_vec().as_slice() {
+            panic!("매직 넘버 확인 실패 {0}", index);
+        }
+
+        let (version, index) = self.import_version( &file, index);
+        log = log + format!(" v{0}.{1}.{2}", version[0], version[1], version[2]).as_str();
+
+        let (constants, index) = self.read_constant_pool(&file, index);
+        let (bytecode, index) = self.read_code_section(&file, index);
+        let scope:Scope = self.read_scope_info(&file, index);
+        self.bytecode_engine.set(constants, bytecode, scope);
+    }
+
+    fn read_constant_pool(&self, file: &Vec<u8>, index: usize) -> (Vec<VMObejct>, usize) {
+        let size = std::mem::size_of::<u16>();
+        let mut array = [0u8; std::mem::size_of::<u16>()];
+        array.copy_from_slice(&file[index..index + size]);
+        let length = u16::from_le_bytes(array);
+        let mut index = index + size;
+        let mut constant_pool:Vec<VMObejct> = Vec::new();
+        for _ in 0..length {
+            match file[index] {
+                0x01 => {
+                    index += 1;
+                    constant_pool.push(VMObejct::Null);
+                },
+                0x02 => {
+                    index += 1;
+                    let length = std::mem::size_of::<i64>();
+                    let mut array = [0u8; std::mem::size_of::<i64>()];
+                    array.copy_from_slice(&file[index..index + length]);
+                    let value = i64::from_le_bytes(array);
+                    constant_pool.push(VMObejct::I64(value));
+                    index += length;
+                },
+                0x03 => {
+                    index += 1;
+                    let length = std::mem::size_of::<f64>();
+                    let mut array = [0u8; std::mem::size_of::<f64>()];
+                    array.copy_from_slice(&file[index..index + length]);
+                    let value = f64::from_le_bytes(array);
+                    constant_pool.push(VMObejct::F64(value));
+                    index += length;
+                },
+                0x0C => {
+                    index += 1;
+                    constant_pool.push(VMObejct::Bool(file[index] == 1));
+                    index += 1;
+                },
+                0x0F => {
+                    index += 1;
+                    let length = std::mem::size_of::<u32>();
+                    let mut array = [0u8; std::mem::size_of::<u32>()];
+                    array.copy_from_slice(&file[index..index + length]);
+                    let string_length = u32::from_le_bytes(array) as usize;
+                    index += length;
+                    if let Ok(import_magic) = String::from_utf8(file[index..index + string_length].to_vec()) {
+                        constant_pool.push(VMObejct::String(import_magic));
+                    }
+                    index += string_length;
+                },
+                _ => panic!("알 수 없는 코드입니다.")
+            }
+        }
+
+        (constant_pool, index)
+    }
+
+    fn read_code_section(&self, file:& Vec<u8>, index: usize) ->  (Vec<u8>, usize) {
+        let (code_length, index) = self.import_usize(file, index);
+        (file[index..index + code_length].to_vec(), index + code_length)
+    }
+
+    fn read_scope_info(&self, file:&Vec<u8>, index: usize) -> Scope {
+        let size = std::mem::size_of::<u16>();
+        let mut array = [0u8; std::mem::size_of::<u16>()];
+        array.copy_from_slice(&file[index..index + size]);
+        let identifier_count = u16::from_le_bytes(array);
+        let mut index = index + size;
+        let mut scope:Scope = Scope::new();
+        for _ in 0..identifier_count {
+            let string_length = file[index] as usize;
+            index += 1;
+            if let Ok(name) = String::from_utf8(file[index..index + string_length].to_vec()) {
+                index += string_length;
+                let size = std::mem::size_of::<u16>();
+                let mut array = [0u8; std::mem::size_of::<u16>()];
+                array.copy_from_slice(&file[index..index + size]);
+                let addr = u16::from_le_bytes(array);
+                index += size;
+                let typ = self.decompile_type(file[index]);
+                index += 1;
+                scope.stack.insert(name, (addr as usize, typ));
+            }
+        }
+        scope
+    }
+
+    fn decompile_type(&self, byte:u8) -> Type {
+        match byte {
+            0x71 => Type::None,
+            0x72 => Type::I64,
+            0x73 => Type::F64,
+            0x7C => Type::Bool,
+            0x7F => Type::String,
+            _ => panic!("디컴파일 오류 : Type 식별 바이트 코드({0:#02x}) 매치 불가", byte)
+        }
+    }
+
+    fn import_version(&self, file: &Vec<u8>, index: usize) -> ([u8; 3], usize) {
+        let mut array = [0u8; 3];
+        array.copy_from_slice(&file[index..index + 3]);
+        (array, index + 3)
+    }
+
+    fn import_usize(&self, file: &Vec<u8>, index: usize) -> (usize, usize) {
+        let size = std::mem::size_of::<usize>();
+        let mut array = [0u8; std::mem::size_of::<usize>()];
+        array.copy_from_slice(&file[index..index + size]);
+        (usize::from_le_bytes(array), index + size)
     }
 }
 
@@ -316,13 +433,28 @@ mod test {
         if let Some(result) = interust.eval_string(r#"
             let a = 5;
             fn add(x:f64) -> i64 {
-                return a + 3.5
+                return x + 3.5
             }
             add(a);
         "#){
             println!("{:?}", result);
             assert_eq!(result, Object::I64(8));
         }
+    }
+
+    #[test]
+    fn test_export() {
+        let mut interust = InterustEngine::new();
+        interust.export_from_str("test_export",r#"
+            let a = 5;
+            fn add(x:f64) -> i64 {
+                return x + 3.5
+            }
+            let result = add(a);
+        "#);
+
+        interust.import_compiled("test_export.irs");
+        interust.run_compiled();
     }
 }
 

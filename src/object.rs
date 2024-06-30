@@ -13,7 +13,7 @@ pub enum Object {
     Fn(Vec<Expression>, Vec<Statement>, Rc<RefCell<Environment>>, Type),
     LibraryFn(fn(Vec<Object>) -> Object),
     Null,
-    ReturnValue(Object),
+    ReturnValue(Box<Object>),
     Error(String),
 }
 
