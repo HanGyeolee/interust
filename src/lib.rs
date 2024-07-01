@@ -792,7 +792,7 @@ impl Object {
 
 /// # 인터프리터에서 활용할 추상 구문 트리(AST)
 pub mod ast {
-    /// 추상 구문 상수
+    /// AST 상수
     #[derive(Debug, PartialEq, Clone)]
     pub enum Literal {
         None,                   // 0x01
@@ -824,7 +824,7 @@ pub mod ast {
         }
     }
 
-    /// 추상 구문 타입
+    /// AST 타입
     #[allow(non_camel_case_types)]
     #[repr(u8)]
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -858,7 +858,7 @@ pub mod ast {
         }
     }
 
-    /// 추상 구문 연산
+    /// AST 연산
     #[derive(Debug, PartialEq, Clone)]
     pub enum Infix {
         Plus        = 0x20,     // +
@@ -896,14 +896,14 @@ pub mod ast {
         }
     }
 
-    /// 추상 구문 접두연산
+    /// AST 접두연산
     #[derive(Debug, PartialEq, Clone)]
     pub enum Prefix {
         Minus       = 0x40,
         Not         = 0x41,
     }
 
-    /// 추상 구문 상태
+    /// AST 상태
     #[derive(Debug, PartialEq, Clone)]
     pub enum Statement {
         Let{                                // 0x50 from to[0x52 addr type]
@@ -914,7 +914,7 @@ pub mod ast {
         Expression(Expression),
     }
 
-    /// 추상 구문 구문
+    /// AST 구문
     #[derive(Debug, PartialEq, Clone)]
     pub enum Expression {
         Variable(String, Type),             // 0x52 type
@@ -948,7 +948,7 @@ pub mod ast {
         ),
     }
 
-    /// 추상 구문 우선순위
+    /// AST 우선순위
     #[derive(PartialEq, PartialOrd)]
     pub enum Precedence {
         Lowest,
