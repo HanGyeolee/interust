@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::object::Object;
-use crate::ast::Type;
+use crate::Object;
+use crate::Type;
 
 #[derive(Debug, PartialEq)]
 pub struct Environment {

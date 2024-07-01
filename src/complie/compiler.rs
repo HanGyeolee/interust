@@ -1,8 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use crate::complie::compile::{Compile, Compiling};
-use crate::ast::{Expression, Program, Statement};
-use crate::vmobject::{Constant, Scope};
+use crate::{Constant, Expression, Program, Scope, Statement};
 
 #[derive(Debug)]
 pub struct Compiler;
@@ -91,8 +90,8 @@ impl Compiler {
     }
 
     fn write_scope_info(&self, binary: &mut Vec<u8>, scope: &Scope) {
-        binary.write_all(&(scope.stack.len() as u16).to_le_bytes()).expect("식별자 개수 작성 실패");
-        for (name, (addr, typ)) in &scope.stack {
+        binary.write_all(&(scope.table.len() as u16).to_le_bytes()).expect("식별자 개수 작성 실패");
+        for (name, (addr, typ)) in &scope.table {
             binary.write_all(&(name.len() as u8).to_le_bytes()).expect("식별자 문자열 크기 작성 실패");
             binary.write_all(name.as_bytes()).expect("식별자 문자열 작성 실패");
             binary.write_all(&(*addr as u16).to_le_bytes()).expect("식별자 주소 작성 실패");

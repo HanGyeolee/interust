@@ -1,7 +1,5 @@
 use std::ops::Add;
-use crate::ast::Type;
-use crate::vmobject::{Scope, VMObejct};
-
+use crate::{Scope, Type, VMObejct};
 
 pub struct VM {
     constants: Vec<VMObejct>,
@@ -513,7 +511,7 @@ impl BytecodeEngine {
     }
 
     pub fn call_function(&mut self, name:String, params: Vec<VMObejct>) -> Option<VMObejct> {
-        if let Some((addr, _)) = self.scope.stack.get(&name) {
+        if let Some((addr, _)) = self.scope.table.get(&name) {
             if self.virtual_machine.call_function(*addr, params) {
                 return Some(self.virtual_machine.pop_register());
             }else {
@@ -524,7 +522,7 @@ impl BytecodeEngine {
     }
 
     pub fn call_variable(&mut self, name:String) -> VMObejct {
-        if let Some((addr, _)) = self.scope.stack.get(&name) {
+        if let Some((addr, _)) = self.scope.table.get(&name) {
             return self.virtual_machine.call_variable(*addr);
         }
         return VMObejct::Error(format!("해당하는 변수 식별자({0})가 없습니다.",name));
@@ -542,7 +540,7 @@ mod test {
     use crate::parser::parser::Parser;
     use crate::tokenizer::tokenizer::Tokenizer;
     use crate::virtualmachine::VM;
-    use crate::vmobject::VMObejct;
+    use crate::VMObejct;
 
     #[test]
     fn test_set_constant(){

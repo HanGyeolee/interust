@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::Token;
 
 struct InterustLog {
 }
@@ -267,7 +267,7 @@ impl<'a> Tokenizer<'a>{
 
 #[cfg(test)]
 mod test {
-    use crate::token::Token;
+    use crate::Token;
     use crate::tokenizer::tokenizer::Tokenizer;
 
     #[test]

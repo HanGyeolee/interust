@@ -801,12 +801,10 @@
 <a href="#800" id="800">800</a>
 <a href="#801" id="801">801</a>
 <a href="#802" id="802">802</a>
-<a href="#803" id="803">803</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::rc::Rc;
 <span class="kw">use </span>std::cell::RefCell;
-<span class="kw">use </span><span class="kw">crate</span>::ast::{Expression, Infix, Literal, Prefix, Program, Statement, Type};
 <span class="kw">use </span><span class="kw">crate</span>::interpreter::environment::Environment;
-<span class="kw">use </span><span class="kw">crate</span>::object::Object;
+<span class="kw">use crate</span>::{Expression, Infix, Literal, Object, Prefix, Program, Statement, Type};
 
 <span class="kw">pub mod </span>environment;
 
@@ -1236,8 +1234,8 @@
             <span class="prelude-val">Some</span>(Object::Fn(parameters, body, environment, return_type)) =&gt; {
                 (parameters, body, environment, return_type)
             }
-            <span class="prelude-val">Some</span>(Object::LibraryFn(function)) =&gt; <span class="kw">return </span>function(arguments),
-            <span class="prelude-val">Some</span>(object) =&gt; <span class="kw">return </span><span class="self">Self</span>::error(<span class="macro">format!</span>(<span class="string">"{object} is not valid function"</span>)),
+            <span class="comment">//Some(Object::LibraryFn(function)) =&gt; return function(arguments),
+            </span><span class="prelude-val">Some</span>(object) =&gt; <span class="kw">return </span><span class="self">Self</span>::error(<span class="macro">format!</span>(<span class="string">"{object} is not valid function"</span>)),
             <span class="prelude-val">None </span>=&gt; <span class="kw">return </span>Object::Null,
         };
 
@@ -1299,7 +1297,7 @@
 
     <span class="kw">use </span><span class="kw">crate</span>::interpreter::environment::Environment;
     <span class="kw">use </span><span class="kw">crate</span>::interpreter::Interpreter;
-    <span class="kw">use </span><span class="kw">crate</span>::object::Object;
+    <span class="kw">use </span><span class="kw">crate</span>::Object;
     <span class="kw">use </span><span class="kw">crate</span>::parser::parser::Parser;
     <span class="kw">use </span><span class="kw">crate</span>::tokenizer::tokenizer::Tokenizer;
 

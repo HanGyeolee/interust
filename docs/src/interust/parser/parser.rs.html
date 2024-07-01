@@ -664,10 +664,8 @@
 <a href="#663" id="663">663</a>
 <a href="#664" id="664">664</a>
 <a href="#665" id="665">665</a>
-<a href="#666" id="666">666</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::ast::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Type};
-<span class="kw">use </span><span class="kw">crate</span>::parser::error::{ParseError, ParseErrorKind};
-<span class="kw">use </span><span class="kw">crate</span>::token::{Token};
+</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::parser::error::{ParseError, ParseErrorKind};
+<span class="kw">use crate</span>::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Token, Type};
 
 <span class="kw">pub struct </span>Parser&lt;<span class="lifetime">'a</span>&gt; {
     tokens: <span class="kw-2">&amp;</span><span class="lifetime">'a </span>[Token],

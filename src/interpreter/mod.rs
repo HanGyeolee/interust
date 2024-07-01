@@ -1,8 +1,7 @@
 use std::rc::Rc;
 use std::cell::RefCell;
-use crate::ast::{Expression, Infix, Literal, Prefix, Program, Statement, Type};
 use crate::interpreter::environment::Environment;
-use crate::object::Object;
+use crate::{Expression, Infix, Literal, Object, Prefix, Program, Statement, Type};
 
 pub mod environment;
 
@@ -432,7 +431,7 @@ impl Interpreter {
             Some(Object::Fn(parameters, body, environment, return_type)) => {
                 (parameters, body, environment, return_type)
             }
-            Some(Object::LibraryFn(function)) => return function(arguments),
+            //Some(Object::LibraryFn(function)) => return function(arguments),
             Some(object) => return Self::error(format!("{object} is not valid function")),
             None => return Object::Null,
         };
@@ -495,7 +494,7 @@ mod tests {
 
     use crate::interpreter::environment::Environment;
     use crate::interpreter::Interpreter;
-    use crate::object::Object;
+    use crate::Object;
     use crate::parser::parser::Parser;
     use crate::tokenizer::tokenizer::Tokenizer;
 

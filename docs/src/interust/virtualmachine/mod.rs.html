@@ -624,12 +624,8 @@
 <a href="#623" id="623">623</a>
 <a href="#624" id="624">624</a>
 <a href="#625" id="625">625</a>
-<a href="#626" id="626">626</a>
-<a href="#627" id="627">627</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::ops::Add;
-<span class="kw">use </span><span class="kw">crate</span>::ast::Type;
-<span class="kw">use </span><span class="kw">crate</span>::vmobject::{Scope, VMObejct};
-
+<span class="kw">use crate</span>::{Scope, Type, VMObejct};
 
 <span class="kw">pub struct </span>VM {
     constants: Vec&lt;VMObejct&gt;,
@@ -1141,7 +1137,7 @@
     }
 
     <span class="kw">pub fn </span>call_function(<span class="kw-2">&amp;mut </span><span class="self">self</span>, name:String, params: Vec&lt;VMObejct&gt;) -&gt; <span class="prelude-ty">Option</span>&lt;VMObejct&gt; {
-        <span class="kw">if let </span><span class="prelude-val">Some</span>((addr, <span class="kw">_</span>)) = <span class="self">self</span>.scope.stack.get(<span class="kw-2">&amp;</span>name) {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>((addr, <span class="kw">_</span>)) = <span class="self">self</span>.scope.table.get(<span class="kw-2">&amp;</span>name) {
             <span class="kw">if </span><span class="self">self</span>.virtual_machine.call_function(<span class="kw-2">*</span>addr, params) {
                 <span class="kw">return </span><span class="prelude-val">Some</span>(<span class="self">self</span>.virtual_machine.pop_register());
             }<span class="kw">else </span>{
@@ -1152,7 +1148,7 @@
     }
 
     <span class="kw">pub fn </span>call_variable(<span class="kw-2">&amp;mut </span><span class="self">self</span>, name:String) -&gt; VMObejct {
-        <span class="kw">if let </span><span class="prelude-val">Some</span>((addr, <span class="kw">_</span>)) = <span class="self">self</span>.scope.stack.get(<span class="kw-2">&amp;</span>name) {
+        <span class="kw">if let </span><span class="prelude-val">Some</span>((addr, <span class="kw">_</span>)) = <span class="self">self</span>.scope.table.get(<span class="kw-2">&amp;</span>name) {
             <span class="kw">return </span><span class="self">self</span>.virtual_machine.call_variable(<span class="kw-2">*</span>addr);
         }
         <span class="kw">return </span>VMObejct::Error(<span class="macro">format!</span>(<span class="string">"해당하는 변수 식별자({0})가 없습니다."</span>,name));
@@ -1170,7 +1166,7 @@
     <span class="kw">use </span><span class="kw">crate</span>::parser::parser::Parser;
     <span class="kw">use </span><span class="kw">crate</span>::tokenizer::tokenizer::Tokenizer;
     <span class="kw">use </span><span class="kw">crate</span>::virtualmachine::VM;
-    <span class="kw">use </span><span class="kw">crate</span>::vmobject::VMObejct;
+    <span class="kw">use </span><span class="kw">crate</span>::VMObejct;
 
     <span class="attr">#[test]
     </span><span class="kw">fn </span>test_set_constant(){

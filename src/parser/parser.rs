@@ -1,6 +1,5 @@
-use crate::ast::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Type};
 use crate::parser::error::{ParseError, ParseErrorKind};
-use crate::token::{Token};
+use crate::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Token, Type};
 
 pub struct Parser<'a> {
     tokens: &'a [Token],

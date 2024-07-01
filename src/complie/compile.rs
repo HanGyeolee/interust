@@ -1,5 +1,4 @@
-use crate::ast::*;
-use crate::vmobject::{Constant, Scope};
+use crate::{Constant, Expression, Infix, Literal, Prefix, Scope, Statement, Type};
 
 pub trait Compile {
     fn compile(&self, compiler: &mut Compiling);
@@ -171,11 +170,11 @@ impl Compile for Expression {
             Expression::Variable(name, typ) => {
                 {
                     let (scope, offset) = compiler.current_scope_mut();
-                    let index = scope.stack.len() + offset.clone();
-                    if let Some(_) = scope.stack.get(name){
+                    let index = scope.table.len() + offset.clone();
+                    if let Some(_) = scope.table.get(name){
                         panic!("{}", format!("컴파일 불가 : 해당하는 변수 식별자({0})가 이미 있습니다.", name));
                     }
-                    scope.stack.insert(name.clone(), (index, typ.clone()));
+                    scope.table.insert(name.clone(), (index, typ.clone()));
                 };
 
                 // 0x52 type
@@ -189,7 +188,7 @@ impl Compile for Expression {
                 while index > -1 {
                     let addr_opt = {
                         let (scope, _) = compiler.get_scope_mut(index as usize);
-                        scope.stack.get(name).map(|(addr, _)| addr.clone())
+                        scope.table.get(name).map(|(addr, _)| addr.clone())
                     };
 
                     if let Some(addr) = addr_opt {
@@ -234,7 +233,7 @@ impl Compile for Expression {
                 }
 
                 let (scope, offset) = compiler.current_scope_mut();
-                let new_scope_offset = scope.stack.len() + offset.clone();
+                let new_scope_offset = scope.table.len() + offset.clone();
                 compiler.push_scope(new_scope_offset);
                 for stmt in consequence {
                     stmt.compile(compiler);
@@ -243,7 +242,7 @@ impl Compile for Expression {
 
                 if let Some(alternative) = alternative {
                     let (scope, offset) = compiler.current_scope_mut();
-                    let new_scope_offset = scope.stack.len() + offset.clone();
+                    let new_scope_offset = scope.table.len() + offset.clone();
                     compiler.push_scope(new_scope_offset);
                     for stmt in alternative {
                         stmt.compile(compiler);
@@ -254,11 +253,11 @@ impl Compile for Expression {
             Expression::Fn {identifier, parameters, body, return_type} => {
                 {
                     let (scope, offset) = compiler.current_scope_mut();
-                    let func_index = scope.stack.len() + offset.clone();
-                    if let Some(_) = scope.stack.get(identifier){
+                    let func_index = scope.table.len() + offset.clone();
+                    if let Some(_) = scope.table.get(identifier){
                         panic!("{}", format!("컴파일 불가 : 해당하는 함수 식별자({0})가 이미 있습니다.", identifier));
                     }
-                    scope.stack.insert(identifier.clone(), (func_index, return_type.clone()));
+                    scope.table.insert(identifier.clone(), (func_index, return_type.clone()));
                 };
 
                 // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
@@ -276,7 +275,7 @@ impl Compile for Expression {
 
                 let new_scope_offset = {
                     let (scope, offset) = compiler.current_scope_mut();
-                    scope.stack.len() + offset.clone()
+                    scope.table.len() + offset.clone()
                 };
                 compiler.push_scope(new_scope_offset);
                 for stmt in parameters {
@@ -297,7 +296,7 @@ impl Compile for Expression {
                     while index > -1 {
                         let addr_opt = {
                             let (scope, _) = compiler.get_scope_mut(index as usize);
-                            scope.stack.get(name).map(|(addr, _)| addr.clone())
+                            scope.table.get(name).map(|(addr, _)| addr.clone())
                         };
 
                         if let Some(addr) = addr_opt {

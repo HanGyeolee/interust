@@ -160,12 +160,10 @@
 <a href="#159" id="159">159</a>
 <a href="#160" id="160">160</a>
 <a href="#161" id="161">161</a>
-<a href="#162" id="162">162</a>
 </pre></div><pre class="rust"><code><span class="kw">use </span>std::fs::File;
 <span class="kw">use </span>std::io::Write;
 <span class="kw">use </span><span class="kw">crate</span>::complie::compile::{Compile, Compiling};
-<span class="kw">use </span><span class="kw">crate</span>::ast::{Expression, Program, Statement};
-<span class="kw">use </span><span class="kw">crate</span>::vmobject::{Constant, Scope};
+<span class="kw">use crate</span>::{Constant, Expression, Program, Scope, Statement};
 
 <span class="attr">#[derive(Debug)]
 </span><span class="kw">pub struct </span>Compiler;
@@ -254,8 +252,8 @@
     }
 
     <span class="kw">fn </span>write_scope_info(<span class="kw-2">&amp;</span><span class="self">self</span>, binary: <span class="kw-2">&amp;mut </span>Vec&lt;u8&gt;, scope: <span class="kw-2">&amp;</span>Scope) {
-        binary.write_all(<span class="kw-2">&amp;</span>(scope.stack.len() <span class="kw">as </span>u16).to_le_bytes()).expect(<span class="string">"식별자 개수 작성 실패"</span>);
-        <span class="kw">for </span>(name, (addr, typ)) <span class="kw">in </span><span class="kw-2">&amp;</span>scope.stack {
+        binary.write_all(<span class="kw-2">&amp;</span>(scope.table.len() <span class="kw">as </span>u16).to_le_bytes()).expect(<span class="string">"식별자 개수 작성 실패"</span>);
+        <span class="kw">for </span>(name, (addr, typ)) <span class="kw">in </span><span class="kw-2">&amp;</span>scope.table {
             binary.write_all(<span class="kw-2">&amp;</span>(name.len() <span class="kw">as </span>u8).to_le_bytes()).expect(<span class="string">"식별자 문자열 크기 작성 실패"</span>);
             binary.write_all(name.as_bytes()).expect(<span class="string">"식별자 문자열 작성 실패"</span>);
             binary.write_all(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span>addr <span class="kw">as </span>u16).to_le_bytes()).expect(<span class="string">"식별자 주소 작성 실패"</span>);

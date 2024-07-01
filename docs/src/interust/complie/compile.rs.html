@@ -403,9 +403,7 @@
 <a href="#402" id="402">402</a>
 <a href="#403" id="403">403</a>
 <a href="#404" id="404">404</a>
-<a href="#405" id="405">405</a>
-</pre></div><pre class="rust"><code><span class="kw">use </span><span class="kw">crate</span>::ast::<span class="kw-2">*</span>;
-<span class="kw">use </span><span class="kw">crate</span>::vmobject::{Constant, Scope};
+</pre></div><pre class="rust"><code><span class="kw">use crate</span>::{Constant, Expression, Infix, Literal, Prefix, Scope, Statement, Type};
 
 <span class="kw">pub trait </span>Compile {
     <span class="kw">fn </span>compile(<span class="kw-2">&amp;</span><span class="self">self</span>, compiler: <span class="kw-2">&amp;mut </span>Compiling);
@@ -577,11 +575,11 @@
             Expression::Variable(name, typ) =&gt; {
                 {
                     <span class="kw">let </span>(scope, offset) = compiler.current_scope_mut();
-                    <span class="kw">let </span>index = scope.stack.len() + offset.clone();
-                    <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw">_</span>) = scope.stack.get(name){
+                    <span class="kw">let </span>index = scope.table.len() + offset.clone();
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw">_</span>) = scope.table.get(name){
                         <span class="macro">panic!</span>(<span class="string">"{}"</span>, <span class="macro">format!</span>(<span class="string">"컴파일 불가 : 해당하는 변수 식별자({0})가 이미 있습니다."</span>, name));
                     }
-                    scope.stack.insert(name.clone(), (index, typ.clone()));
+                    scope.table.insert(name.clone(), (index, typ.clone()));
                 };
 
                 <span class="comment">// 0x52 type
@@ -595,7 +593,7 @@
                 <span class="kw">while </span>index &gt; -<span class="number">1 </span>{
                     <span class="kw">let </span>addr_opt = {
                         <span class="kw">let </span>(scope, <span class="kw">_</span>) = compiler.get_scope_mut(index <span class="kw">as </span>usize);
-                        scope.stack.get(name).map(|(addr, <span class="kw">_</span>)| addr.clone())
+                        scope.table.get(name).map(|(addr, <span class="kw">_</span>)| addr.clone())
                     };
 
                     <span class="kw">if let </span><span class="prelude-val">Some</span>(addr) = addr_opt {
@@ -640,7 +638,7 @@
                 }
 
                 <span class="kw">let </span>(scope, offset) = compiler.current_scope_mut();
-                <span class="kw">let </span>new_scope_offset = scope.stack.len() + offset.clone();
+                <span class="kw">let </span>new_scope_offset = scope.table.len() + offset.clone();
                 compiler.push_scope(new_scope_offset);
                 <span class="kw">for </span>stmt <span class="kw">in </span>consequence {
                     stmt.compile(compiler);
@@ -649,7 +647,7 @@
 
                 <span class="kw">if let </span><span class="prelude-val">Some</span>(alternative) = alternative {
                     <span class="kw">let </span>(scope, offset) = compiler.current_scope_mut();
-                    <span class="kw">let </span>new_scope_offset = scope.stack.len() + offset.clone();
+                    <span class="kw">let </span>new_scope_offset = scope.table.len() + offset.clone();
                     compiler.push_scope(new_scope_offset);
                     <span class="kw">for </span>stmt <span class="kw">in </span>alternative {
                         stmt.compile(compiler);
@@ -660,11 +658,11 @@
             Expression::Fn {identifier, parameters, body, return_type} =&gt; {
                 {
                     <span class="kw">let </span>(scope, offset) = compiler.current_scope_mut();
-                    <span class="kw">let </span>func_index = scope.stack.len() + offset.clone();
-                    <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw">_</span>) = scope.stack.get(identifier){
+                    <span class="kw">let </span>func_index = scope.table.len() + offset.clone();
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(<span class="kw">_</span>) = scope.table.get(identifier){
                         <span class="macro">panic!</span>(<span class="string">"{}"</span>, <span class="macro">format!</span>(<span class="string">"컴파일 불가 : 해당하는 함수 식별자({0})가 이미 있습니다."</span>, identifier));
                     }
-                    scope.stack.insert(identifier.clone(), (func_index, return_type.clone()));
+                    scope.table.insert(identifier.clone(), (func_index, return_type.clone()));
                 };
 
                 <span class="comment">// 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
@@ -682,7 +680,7 @@
 
                 <span class="kw">let </span>new_scope_offset = {
                     <span class="kw">let </span>(scope, offset) = compiler.current_scope_mut();
-                    scope.stack.len() + offset.clone()
+                    scope.table.len() + offset.clone()
                 };
                 compiler.push_scope(new_scope_offset);
                 <span class="kw">for </span>stmt <span class="kw">in </span>parameters {
@@ -703,7 +701,7 @@
                     <span class="kw">while </span>index &gt; -<span class="number">1 </span>{
                         <span class="kw">let </span>addr_opt = {
                             <span class="kw">let </span>(scope, <span class="kw">_</span>) = compiler.get_scope_mut(index <span class="kw">as </span>usize);
-                            scope.stack.get(name).map(|(addr, <span class="kw">_</span>)| addr.clone())
+                            scope.table.get(name).map(|(addr, <span class="kw">_</span>)| addr.clone())
                         };
 
                         <span class="kw">if let </span><span class="prelude-val">Some</span>(addr) = addr_opt {
