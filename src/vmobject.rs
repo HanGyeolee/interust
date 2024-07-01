@@ -1,5 +1,5 @@
 use std::fmt;
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use crate::ast::Type;
 
 /// Java Stack 이나 Rust Interpreter 에 대해서 공부하는 게 좋을 것 같다.
@@ -57,13 +57,13 @@ pub enum Constant {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Scope {
     /// 식별자, (주소, 타입)
-    pub stack: HashMap<String, (usize, Type)>,
+    pub stack: FxHashMap<String, (usize, Type)>,
 }
 
 impl Scope {
     pub fn new() -> Self {
         Scope {
-            stack: HashMap::new(),
+            stack: FxHashMap::default(),
         }
     }
 }

@@ -1,4 +1,3 @@
-use std::ops::Index;
 use crate::ast::*;
 use crate::vmobject::{Constant, Scope};
 

@@ -31,7 +31,9 @@ impl Literal{
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[allow(non_camel_case_types)]
+#[repr(u8)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub enum Type {
     None        =       0x71,
     I64         =       0x72,

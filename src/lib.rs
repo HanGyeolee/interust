@@ -541,6 +541,7 @@ impl InterustVM{
 
 #[cfg(test)]
 mod test {
+    use std::time::{Duration, Instant};
     use crate::{InterustCompiler, InterustVM};
     use crate::object::Object;
 
@@ -599,6 +600,38 @@ mod test {
 
         let value = interust_vm.call_compiled_var(String::from("count"));
         println!("{:?}", value);
+    }
+
+    #[test]
+    fn test_hash_speed() {
+        let iterator = 100000;
+        let mut mean = Duration::new(0,0);
+        let mut interust_compiler = InterustCompiler::new();
+        interust_compiler.export_from_str("test_export", r#"
+                let count:i64 = 0;
+                fn add() -> i64 {
+                    count = count + 1;
+                }
+            "#);
+
+        let mut interust_vm = InterustVM::new();
+        interust_vm.import_compiled("test_export.irs");
+
+        for _ in 0..iterator {
+            let start = Instant::now();
+
+            interust_vm.call_compiled_fn(String::from("add"), vec![]);
+            interust_vm.call_compiled_fn(String::from("add"), vec![]);
+            interust_vm.call_compiled_fn(String::from("add"), vec![]);
+
+            interust_vm.call_compiled_var(String::from("count"));
+            let end = Instant::now();
+            mean += end - start;
+        }
+
+        println!("runtime mean: {:?}", mean/iterator);
+        // HashMap      = 10만번 : 2.103µs
+        // FxHashMap    = 10만번 : 1.835µs
     }
 }
 
