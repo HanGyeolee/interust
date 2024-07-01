@@ -384,7 +384,7 @@ impl Interpreter {
                 )),
             }
             Type::Bool => Object::Bool(Self::is_truthy(object.clone())),
-            Type::None => object.clone()
+            _ => object.clone()
         }
     }
 

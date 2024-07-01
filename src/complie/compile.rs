@@ -9,6 +9,7 @@ pub trait Compile {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Compiling {
     pub scopes: Vec<(Scope, usize)>, // 스코프, 스코프 오프셋 인덱스
+    pub scope_index: usize,
     pub constants: Vec<Constant>,
     pub bytecode: Vec<u8>,
 }
@@ -17,6 +18,7 @@ impl Compiling {
     pub fn new() -> Self {
         Compiling {
             scopes: vec![(Scope::new(), 0usize)],
+            scope_index: 0,
             constants: Vec::new(),
             bytecode: Vec::new(),
         }
@@ -44,11 +46,17 @@ impl Compiling {
         self.scopes.last_mut().unwrap()
     }
 
+    pub fn get_scope_mut(&mut self, index:usize) -> &mut (Scope, usize) {
+        self.scopes.get_mut(index).unwrap()
+    }
+
     pub fn push_scope(&mut self, index: usize) {
+        self.scope_index += 1;
         self.scopes.push((Scope::new(), index));
     }
 
     pub fn pop_scope(&mut self) {
+        self.scope_index -= 1;
         self.scopes.pop();
     }
 }
@@ -171,15 +179,25 @@ impl Compile for Expression {
                 typ.compile(compiler);
             }
             Expression::Identifier(name) => {
-                let addr_opt = {
-                    let (scope, _) = compiler.current_scope_mut();
-                    scope.stack.get(name).map(|(addr, _)| addr.clone())
-                };
+                let mut index = compiler.scope_index as i128;
+                let mut not_found = true;
 
-                if let Some(addr) = addr_opt {
-                    compiler.emit(0x53); // 변수 로드 = 0x53 addr
-                    compiler.emit_u16(addr.clone() as u16);
-                } else {
+                while index > -1 {
+                    let addr_opt = {
+                        let (scope, _) = compiler.get_scope_mut(index as usize);
+                        scope.stack.get(name).map(|(addr, _)| addr.clone())
+                    };
+
+                    if let Some(addr) = addr_opt {
+                        compiler.emit(0x53); // 변수 로드 = 0x53 addr
+                        compiler.emit_u16(addr as u16);
+                        not_found = false;
+                        break;
+                    } else {
+                        index -= 1;
+                    }
+                }
+                if not_found {
                     panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없음", name));
                 }
             }
@@ -266,14 +284,24 @@ impl Compile for Expression {
                 // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
                 compiler.emit(0x57);
                 if let Expression::Identifier(name) = function.as_ref() {
-                    let addr_opt = {
-                        let (scope, _) = compiler.current_scope_mut();
-                        scope.stack.get(name).map(|(addr, _)| addr.clone())
-                    };
+                    let mut index = compiler.scope_index as i128;
+                    let mut not_found = true;
 
-                    if let Some(addr) = addr_opt {
-                        compiler.emit_u16(addr as u16); // 함수 로드 = addr
-                    } else {
+                    while index > -1 {
+                        let addr_opt = {
+                            let (scope, _) = compiler.get_scope_mut(index as usize);
+                            scope.stack.get(name).map(|(addr, _)| addr.clone())
+                        };
+
+                        if let Some(addr) = addr_opt {
+                            compiler.emit_u16(addr as u16);
+                            not_found = false;
+                            break;
+                        } else {
+                            index -= 1;
+                        }
+                    }
+                    if not_found {
                         panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없음", name));
                     }
                 }else {

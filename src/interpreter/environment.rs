@@ -83,7 +83,7 @@ impl Environment {
             Type::I64 => self.store.insert(name, Object::I64(0)),
             Type::String => self.store.insert(name, Object::String(String::new())),
             Type::Bool => self.store.insert(name, Object::Bool(false)),
-            Type::None => self.store.insert(name, Object::Null)
+            Type::None => self.store.insert(name, Object::Null),
         };
     }
 }

@@ -24,8 +24,8 @@ use crate::object::Object;
 use crate::parser::parser::Parser;
 use crate::token::Token;
 use crate::tokenizer::tokenizer::Tokenizer;
-use crate::virtualmachine::{BytecodeEngine, VM};
-use crate::vmobject::{Constant, Scope, VMObejct};
+use crate::virtualmachine::{BytecodeEngine};
+use crate::vmobject::{Scope, VMObejct};
 
 mod tokenizer;
 mod parser;
@@ -38,27 +38,25 @@ pub mod ast;
 mod virtualmachine;
 mod vmobject;
 
-pub struct InterustEngine {
-    bytecode_engine:BytecodeEngine,
+pub struct InterustCompiler {
     interpreter: Interpreter,
     compiler: Compiler,
     program: Program,
 }
 
-impl InterustEngine {
+impl InterustCompiler {
     /// 인터프리터 엔진을 생성합니다.
     ///
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// ```
     pub fn new() -> Self {
-        InterustEngine {
+        InterustCompiler {
             interpreter: Interpreter::new(Rc::new(RefCell::new(Environment::new()))),
-            bytecode_engine: BytecodeEngine::new(),
             compiler: Compiler::new(),
             program: Program::new()
         }
@@ -75,10 +73,10 @@ impl InterustEngine {
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     /// use interust::token::Token;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// let tokens = interust.tokenize(r#"
     ///     let a = 5;
     ///     a
@@ -113,9 +111,9 @@ impl InterustEngine {
     /// ```
     /// use interust::ast::*;
     /// use interust::token::Token;
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// let tokens:Vec<Token> = vec![
     ///     Token::Let,
     ///     Token::Identifier(String::from("a")),
@@ -156,10 +154,10 @@ impl InterustEngine {
     /// ```
     /// use interust::ast::*;
     /// use interust::token::Token;
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     /// use interust::object::Object;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// let program = vec![
     ///     Statement::Let {
     ///         variable: Expression::Variable(String::from("a"), Type::I64),
@@ -190,10 +188,10 @@ impl InterustEngine {
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     /// use interust::object::Object;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// if let Some(result) = interust.eval_string(r#"
     ///     let a = 5;
     ///     a
@@ -224,7 +222,11 @@ impl InterustEngine {
         self.reset_program();
     }
 
-    /// 인터프리터에서 여태까지 작성된 코드를 컴파일하여 바이트 코드 파일로 출력합니다.
+    /// 인터프리터에서 여태까지 작성된 코드를 컴파일하여 바이트 코드 파일로 출력합니다.<br/><br/>
+    ///
+    /// # 주의
+    /// 컴파일하는 경우 전역 변수와 전역 함수로만 이루어지도록 `Program:Vec<Statement>` 변수 내부에
+    /// `Statement::Let` 과 `Expression::Fn` 을 남기고 전부 **제거** 합니다.
     ///
     /// # 매개변수
     /// - `file_path` : `&str` 타입, 저장될 파일 위치<br/>
@@ -233,13 +235,16 @@ impl InterustEngine {
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     /// use interust::object::Object;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// interust.eval_string(r#"
     ///     let a = 5;
-    ///     a
+    ///     fn add() -> i64 {
+    ///         return 3;
+    ///     }
+    ///     a = add(); // 제거됨. 컴파일된 파일 내부에는 해당 명령어 없음.
     /// "#);
     /// interust.export("test");
     /// ```
@@ -274,20 +279,51 @@ impl InterustEngine {
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustEngine;
+    /// use interust::InterustCompiler;
     /// use interust::object::Object;
     ///
-    /// let mut interust = InterustEngine::new();
+    /// let mut interust = InterustCompiler::new();
     /// interust.run_interpreter();
     /// ```
     pub fn run_interpreter(&mut self) -> Option<Object> {
         self.interpreter.eval(self.program.clone())
     }
+}
 
-    pub fn run_compiled(&mut self) {
-        self.bytecode_engine.run();
+pub struct InterustVM {
+    bytecode_engine:BytecodeEngine,
+}
+
+impl InterustVM{
+    /// VitualMachine 엔진을 생성합니다.
+    ///
+    /// # 예제
+    ///
+    /// ```
+    /// use interust::InterustVM;
+    ///
+    /// let mut interust_vm = InterustVM::new();
+    /// ```
+    pub fn new() -> Self {
+        InterustVM {
+            bytecode_engine: BytecodeEngine::new(),
+        }
     }
 
+    /// 인터프리터에서 컴파일된 파일을 읽고 상수와 바이트 코드, 외부에서 참조할 수 있는 전역 변수를 설정합니다.
+    ///
+    /// # 매개변수
+    /// - `file_path` : `&str` 타입, 저장될 파일 위치<br/>
+    /// 반드시 파일 확장자 **.irs**가 포함되어야 합니다.
+    ///
+    /// # 예제
+    ///
+    /// ```
+    /// use interust::InterustVM;
+    ///
+    /// let mut interust_vm = InterustVM::new();
+    /// interust_vm.import_compiled("test.irs");
+    /// ```
     pub fn import_compiled(&mut self, file_path:&str) {
         let mut log:String = String::from(file_path);
 
@@ -309,6 +345,15 @@ impl InterustEngine {
         let (bytecode, index) = self.read_code_section(&file, index);
         let scope:Scope = self.read_scope_info(&file, index);
         self.bytecode_engine.set(constants, bytecode, scope);
+        println!("{}", log);
+    }
+
+
+    pub fn call_compiled_fn(&mut self, name:String, params: Vec<VMObejct>) -> VMObejct {
+        self.bytecode_engine.call_function(name, params)
+    }
+    pub fn call_compiled_var(&mut self, name:String) -> VMObejct {
+        self.bytecode_engine.call_variable(name)
     }
 
     fn read_constant_pool(&self, file: &Vec<u8>, index: usize) -> (Vec<VMObejct>, usize) {
@@ -423,13 +468,12 @@ impl InterustEngine {
 
 #[cfg(test)]
 mod test {
-    use crate::InterustEngine;
+    use crate::{InterustCompiler, InterustVM};
     use crate::object::Object;
-    use crate::token::Token::*;
 
     #[test]
     fn test_token_eq() {
-        let mut interust = InterustEngine::new();
+        let mut interust = InterustCompiler::new();
         if let Some(result) = interust.eval_string(r#"
             let a = 5;
             fn add(x:f64) -> i64 {
@@ -443,8 +487,8 @@ mod test {
     }
 
     #[test]
-    fn test_export() {
-        let mut interust = InterustEngine::new();
+    fn test_export_import() {
+        let mut interust = InterustCompiler::new();
         interust.export_from_str("test_export",r#"
             let a = 5;
             fn add(x:f64) -> i64 {
@@ -453,8 +497,35 @@ mod test {
             let result = add(a);
         "#);
 
-        interust.import_compiled("test_export.irs");
-        interust.run_compiled();
+        let mut interust_vm = InterustVM::new();
+        interust_vm.import_compiled("test_export.irs");
+    }
+
+    #[test]
+    fn test_call_outside() {
+        let mut interust_compiler = InterustCompiler::new();
+        interust_compiler.export_from_str("test_export", r#"
+            let count:i64 = 0;
+            fn add() -> i64 {
+                count = count + 1;
+                return count;
+            }
+        "#);
+
+        let mut interust_vm = InterustVM::new();
+        interust_vm.import_compiled("test_export.irs");
+
+        interust_vm.bytecode_engine.print();
+        let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
+        println!("{:?}", return_value);
+        let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
+        println!("{:?}", return_value);
+        let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
+        println!("{:?}", return_value);
+        interust_vm.bytecode_engine.print();
+
+        let value = interust_vm.call_compiled_var(String::from("count"));
+        println!("{:?}", value);
     }
 }
 

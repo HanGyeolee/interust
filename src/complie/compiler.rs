@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use crate::complie::compile::{Compile, Compiling};
-use crate::ast::Program;
+use crate::ast::{Expression, Program, Statement};
 use crate::vmobject::{Constant, Scope};
 
 #[derive(Debug)]
@@ -22,11 +22,22 @@ impl Compiler {
     }
 
     pub fn export(&mut self, file_path:&str, program: Program){
-        let compiling:Compiling = self.compile(program);
+        let removed = program.into_iter().filter(|x| {
+            return match x {
+                Statement::Let {..} => true,
+                Statement::Return(_) => false,
+                Statement::Expression(x) =>
+                    match x {
+                        Expression::Fn {..} => true,
+                        _ => false
+                    }
+            };
+        }).collect();
+        let compiling:Compiling = self.compile(removed);
         self.export_from(file_path, &compiling);
     }
 
-    pub fn export_from(&mut self, file_path:&str, compiling: &Compiling) {
+    fn export_from(&mut self, file_path:&str, compiling: &Compiling) {
         let mut byte_code:Vec<u8> = vec![];
         // File Header
         byte_code.write_all(MAGIC_NUMBER).expect("매직 넘버 작성 실패");

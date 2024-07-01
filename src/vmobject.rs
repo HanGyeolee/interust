@@ -16,7 +16,7 @@ pub enum VMObejct {
     F64(f64),
     Bool(bool),
     String(String),
-    Fn(usize, usize, usize), // 함수의 시작 주소, 매개변수 개수, 바디의 크기
+    Fn(usize, u8, usize), // 함수의 시작 주소, 매개변수 개수, 바디의 크기
     Error(String)
 }
 
@@ -27,8 +27,8 @@ impl fmt::Display for VMObejct {
             VMObejct::I64(ref value) => write!(f, "{value}"),
             VMObejct::Bool(ref value) => write!(f, "{value}"),
             VMObejct::String(ref value) => write!(f, "{value}"),
-            VMObejct::Fn(ref params, ref body_size) =>
-                write!(f, "fn({params}) {{{body_size}}}"),
+            VMObejct::Fn(ref addr, ref params_count, ref body_size) =>
+                write!(f, "fn {addr}:({params_count}) {{{body_size}}}"),
             VMObejct::Null => write!(f, "null"),
             VMObejct::Error(ref value) => write!(f, "{value}"),
         }
@@ -56,6 +56,7 @@ pub enum Constant {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Scope {
+    /// 식별자, (주소, 타입)
     pub stack: HashMap<String, (usize, Type)>,
 }
 

@@ -185,7 +185,7 @@ impl VM {
         let param_count = self.read_u16() as usize;
         let body_size = self.read_u16() as usize;
 
-        self.push_stack(VMObejct::Fn(self.ip, param_count, body_size));
+        self.push_stack(VMObejct::Fn(self.ip, param_count as u8, body_size));
 
         // Store function metadata if needed
         self.ip += 2 * param_count + body_size; // 매개변수와 바디 크기 만큼 일단 패스
@@ -398,7 +398,7 @@ impl VM {
                 )),
             }
             Type::Bool => VMObejct::Bool(Self::is_truthy(object.clone())),
-            Type::None => object.clone()
+            _ => object.clone()
         }
     }
 
@@ -436,15 +436,43 @@ impl VM {
         }
 
         match self.stack[function_index] {
-            VMObejct::Fn(index, param_count, body_size) => {
-                self.call_function_inner(index, arg_count, body_size);
+            VMObejct::Fn(index, params_count, body_size) => {
+                if params_count == arg_count as u8 {
+                    self.call_function_inner(index, self.ip, arg_count, body_size);
+                } else {
+                    panic!("RuntimeError: 함수 매개변수 개수 불일치: {params_count} == {arg_count}");
+                }
             }
             _ => panic!("RuntimeError: 함수 이외 호출 불가능"),
         }
     }
 
-    fn call_function_inner(&mut self, function_index: usize, arg_count: usize, body_size: usize) {
-        let return_address = self.ip;
+    pub fn call_function(&mut self, function_index: usize, params: Vec<VMObejct>) -> bool {
+        let arg_count = params.len();
+        for param in params {
+            self.push_register(param);
+        }
+
+        match self.stack[function_index] {
+            VMObejct::Fn(index, params_count, body_size) => {
+                if params_count == arg_count as u8 {
+                    let return_address = index + 2 * params_count as usize + body_size;
+                    return self.call_function_inner(index, return_address, arg_count, body_size);
+                } else {
+                    panic!("RuntimeError: 함수 매개변수 개수 불일치: {params_count} == {arg_count}");
+                }
+            }
+            _ => panic!("RuntimeError: 함수 이외 호출 불가능"),
+        }
+    }
+
+    pub fn call_variable(&mut self, variable_index: usize) -> VMObejct {
+        self.stack[variable_index].clone()
+    }
+
+    fn call_function_inner(
+        &mut self, function_index: usize, return_address:usize,
+        arg_count: usize, body_size: usize) -> bool {
         let frame = CallFrame {
             function_index,
             return_address,
@@ -459,11 +487,13 @@ impl VM {
         self.execute_block(body_size);
 
         // return 명령어가 없는 void 를 출력하는 함수일 경우
-        if self.ip != return_address {
+        if self.call_stack.len() > 0 {
             let frame = self.call_stack.pop().expect("Call Stack Underflow");
             self.ip = frame.return_address;
             self.truncate_stack(frame.base_pointer);
+            return false;
         }
+        return true;
     }
 
     fn execute_block(&mut self, size: usize) {
@@ -475,9 +505,7 @@ impl VM {
 }
 
 pub struct BytecodeEngine {
-    virtual_machine:VM,
-    constants: Vec<VMObejct>,
-    bytecode: Vec<u8>,
+    pub virtual_machine:VM,
     scope:Scope
 }
 
@@ -485,22 +513,39 @@ impl BytecodeEngine {
     pub fn new() -> Self {
         BytecodeEngine {
             virtual_machine:VM::new(),
-            constants: Vec::new(),
-            bytecode: Vec::new(),
             scope: Scope::new()
         }
     }
 
     pub fn run(&mut self) {
-        self.virtual_machine.run(self.bytecode.clone(), self.constants.clone());
+
     }
 
     pub fn set(&mut self, constants: Vec<VMObejct>,
                bytecode: Vec<u8>,
                scope:Scope) {
-        self.constants = constants;
-        self.bytecode = bytecode;
         self.scope = scope;
+        self.virtual_machine.run(bytecode, constants);
+    }
+
+    pub fn call_function(&mut self, name:String, params: Vec<VMObejct>) -> VMObejct {
+        if let Some((addr, _)) = self.scope.stack.get(&name) {
+            if self.virtual_machine.call_function(*addr, params) {
+                return self.virtual_machine.pop_register();
+            }
+        }
+        return VMObejct::Error(format!("해당하는 식별자:{0} 함수 없음.",name));
+    }
+
+    pub fn call_variable(&mut self, name:String) -> VMObejct {
+        if let Some((addr, _)) = self.scope.stack.get(&name) {
+            return self.virtual_machine.call_variable(*addr);
+        }
+        return VMObejct::Error(format!("해당하는 식별자:{0} 변수 없음.",name));
+    }
+
+    pub fn print(&self) {
+        println!("{:?}", self.virtual_machine.stack);
     }
 }
 
@@ -567,13 +612,11 @@ mod test {
     #[test]
     fn test_all(){
         let input = r#"
-            let five:i64 = 5;
-            let ten:f64 = 10.0;
+            let count:i64 = 0;
             fn add(x:i64, y) -> i64 {
+                count = count + 1;
                 return x + y;
             }
-            let result = add(five, 1);
-            result = result * ten;
         "#;
 
         let mut tokenizer = Tokenizer::new(input);
@@ -589,7 +632,7 @@ mod test {
 
         let mut virtual_m:VM = VM::new();
         virtual_m.run(compiled.bytecode, vec![
-            VMObejct::I64(5), VMObejct::F64(10.0), VMObejct::I64(1)
+            VMObejct::I64(0), VMObejct::I64(1)
         ]);
         println!("{:?}", virtual_m.stack);
         println!("{:?}", virtual_m.register);
