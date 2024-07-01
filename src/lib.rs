@@ -31,12 +31,12 @@ mod tokenizer;
 mod parser;
 mod interpreter;
 mod complie;
+mod virtualmachine;
 
 pub mod object;
 pub mod token;
 pub mod ast;
-mod virtualmachine;
-mod vmobject;
+pub mod vmobject;
 
 pub struct InterustCompiler {
     interpreter: Interpreter,
@@ -295,7 +295,7 @@ pub struct InterustVM {
 }
 
 impl InterustVM{
-    /// VitualMachine 엔진을 생성합니다.
+    /// 가상 머신을 생성합니다.
     ///
     /// # 예제
     ///
@@ -310,7 +310,8 @@ impl InterustVM{
         }
     }
 
-    /// 인터프리터에서 컴파일된 파일을 읽고 상수와 바이트 코드, 외부에서 참조할 수 있는 전역 변수를 설정합니다.
+    /// 가상 머신에서 컴파일된 파일을 읽고 상수와 바이트 코드,
+    /// 외부에서 참조할 수 있는 전역 변수 및 전역 함수를 설정합니다.
     ///
     /// # 매개변수
     /// - `file_path` : `&str` 타입, 저장될 파일 위치<br/>
@@ -333,7 +334,7 @@ impl InterustVM{
         open.read_to_end(&mut file)
             .expect(format!("해당 \"{0}\" 파일을 읽을 수 없습니다.", file_path).as_str());
 
-        let mut index =MAGIC_NUMBER.len();
+        let index =MAGIC_NUMBER.len();
         if MAGIC_NUMBER != file[0..index].to_vec().as_slice() {
             panic!("매직 넘버 확인 실패 {0}", index);
         }
@@ -348,12 +349,84 @@ impl InterustVM{
         println!("{}", log);
     }
 
-
-    pub fn call_compiled_fn(&mut self, name:String, params: Vec<VMObejct>) -> VMObejct {
+    /// 외부에서 가상 머신 내에 존재하는 함수를 호출합니다.<br/>
+    /// 함수는 가상 머신 내에서 동작하며 반환값이 없는 경우 None을 반환합니다.<br/>
+    /// 연산 중 오류가 발생하면, VMObject::Error() 를 반환합니다.
+    /// # 매개변수
+    /// - `name` : `String` 타입, 호출할 함수 식별자<br/>
+    /// - `params` : `Vec<VMObejct>` 타입, 함수에 전달될 매개변수들<br/>
+    /// # 예제
+    /// ```
+    /// use interust::{InterustCompiler, InterustVM};
+    ///
+    /// let mut interust_compiler = InterustCompiler::new();
+    /// interust_compiler.export_from_str("test_export", r#"
+    ///     let count:i64 = 0;
+    ///     fn add() {
+    ///         count = count + 1;
+    ///     }
+    /// "#);
+    ///
+    /// let mut interust_vm = InterustVM::new();
+    /// interust_vm.import_compiled("test_export.irs");
+    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:1
+    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:2
+    /// assert_eq!(return_value, None);
+    /// ```
+    pub fn call_compiled_fn(&mut self, name:String, params: Vec<VMObejct>) -> Option<VMObejct> {
         self.bytecode_engine.call_function(name, params)
     }
+    /// 외부에서 가상 머신 내에 존재하는 변수를 호출합니다.<br/>
+    /// 연산 중 오류가 발생하면, VMObject::Error() 를 반환합니다.
+    /// # 매개변수
+    /// - `name` : `String` 타입, 호출할 변수 식별자<br/>
+    /// # 예제
+    /// ```
+    /// use interust::{InterustCompiler, InterustVM};
+    /// use interust::vmobject::VMObejct;
+    ///
+    /// let mut interust_compiler = InterustCompiler::new();
+    /// interust_compiler.export_from_str("test_export", r#"
+    ///     let count:i64 = 0;
+    ///     fn add() {
+    ///         count = count + 1;
+    ///     }
+    /// "#);
+    ///
+    /// let mut interust_vm = InterustVM::new();
+    /// interust_vm.import_compiled("test_export.irs");
+    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:1
+    /// let value = interust_vm.call_compiled_var(String::from("count"));
+    /// assert_eq!(value, VMObejct::I64(1));
+    /// ```
     pub fn call_compiled_var(&mut self, name:String) -> VMObejct {
         self.bytecode_engine.call_variable(name)
+    }
+
+    /// 가상 머신 내 상수와 식별자들을 출력합니다.<br/>
+    /// 식별자에 대해 `call_compiled_var()` 을 통해서 접근합니다.
+    ///
+    /// # 예제
+    ///
+    /// ```
+    ///  use interust::{InterustCompiler, InterustVM};
+    /// use interust::vmobject::VMObejct;
+    ///
+    /// let mut interust_compiler = InterustCompiler::new();
+    /// interust_compiler.export_from_str("test_export", r#"
+    ///     let count:i64 = 0;
+    ///     fn add() {
+    ///         count = count + 1;
+    ///     }
+    /// "#);
+    ///
+    /// let mut interust_vm = InterustVM::new();
+    /// interust_vm.import_compiled("test_export.irs");
+    /// interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:1
+    /// interust_vm.print();
+    /// ```
+    pub fn print(&self) {
+        self.bytecode_engine.print();
     }
 
     fn read_constant_pool(&self, file: &Vec<u8>, index: usize) -> (Vec<VMObejct>, usize) {

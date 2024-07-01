@@ -1,3 +1,4 @@
+use std::ops::Index;
 use crate::ast::*;
 use crate::vmobject::{Constant, Scope};
 
@@ -25,6 +26,11 @@ impl Compiling {
     }
 
     pub fn add_constant(&mut self, constant: Constant) -> u16 {
+        if let Some(index) = self.constants.iter().position(|x| {
+           x.eq(&constant)
+        }) {
+            return index as u16;
+        }
         let index = self.constants.len();
         self.constants.push(constant);
         index as u16
@@ -36,10 +42,6 @@ impl Compiling {
 
     pub fn emit_u16(&mut self, value: u16) {
         self.bytecode.extend_from_slice(&value.to_le_bytes());
-    }
-
-    pub fn current_point(&self) -> usize {
-        self.bytecode.len()
     }
 
     pub fn current_scope_mut(&mut self) -> &mut (Scope, usize) {
@@ -171,6 +173,9 @@ impl Compile for Expression {
                 {
                     let (scope, offset) = compiler.current_scope_mut();
                     let index = scope.stack.len() + offset.clone();
+                    if let Some(_) = scope.stack.get(name){
+                        panic!("{}", format!("컴파일 불가 : 해당하는 변수 식별자({0})가 이미 있습니다.", name));
+                    }
                     scope.stack.insert(name.clone(), (index, typ.clone()));
                 };
 
@@ -198,7 +203,7 @@ impl Compile for Expression {
                     }
                 }
                 if not_found {
-                    panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없음", name));
+                    panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없습니다.", name));
                 }
             }
             Expression::Insert{variable, expression} => {
@@ -251,6 +256,9 @@ impl Compile for Expression {
                 {
                     let (scope, offset) = compiler.current_scope_mut();
                     let func_index = scope.stack.len() + offset.clone();
+                    if let Some(_) = scope.stack.get(identifier){
+                        panic!("{}", format!("컴파일 불가 : 해당하는 함수 식별자({0})가 이미 있습니다.", identifier));
+                    }
                     scope.stack.insert(identifier.clone(), (func_index, return_type.clone()));
                 };
 
@@ -302,10 +310,10 @@ impl Compile for Expression {
                         }
                     }
                     if not_found {
-                        panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없음", name));
+                        panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없습니다.", name));
                     }
                 }else {
-                    panic!("컴파일 불가 : 잘못된 구문");
+                    panic!("컴파일 불가 : 잘못된 구문입니다.");
                 }
                 let mut reverse = arguments.clone();
                 reverse.reverse();
@@ -332,12 +340,12 @@ impl Compile for Expression {
     fn get_length(&self) -> usize{
         let mut length = 0;
         match self {
-            Expression::Variable(name, typ) => {
+            Expression::Variable(_, typ) => {
                 // 0x52 type
                 length += 1;
                 length += typ.get_length();
             }
-            Expression::Identifier(name) => {
+            Expression::Identifier(_) => {
                 length += 1;
                 length += 2;
             }
@@ -360,7 +368,7 @@ impl Compile for Expression {
                     }
                 }
             }
-            Expression::Fn {identifier, parameters, body, return_type} => {
+            Expression::Fn {parameters, body, return_type, .. } => {
                 // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
                 length += 1;
                 length += return_type.get_length();
@@ -372,7 +380,7 @@ impl Compile for Expression {
                     length += stmt.get_length();
                 }
             }
-            Expression::Call {function, arguments} => {
+            Expression::Call {arguments, ..} => {
                 // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
                 length += 1;
                 length += 4;

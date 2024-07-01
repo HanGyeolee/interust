@@ -1,4 +1,3 @@
-use std::ops::Index;
 use crate::ast::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Type};
 use crate::parser::error::{ParseError, ParseErrorKind};
 use crate::token::{Token};

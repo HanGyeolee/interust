@@ -9,7 +9,7 @@ use crate::ast::Type;
 /// Interpreter = 고수준 언어로 CPU를 흉내내기 위함
 
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum VMObejct {
     Null,
     I64(i64),

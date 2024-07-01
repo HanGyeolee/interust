@@ -1,4 +1,3 @@
-use std::cell::Ref;
 use std::ops::Add;
 use crate::ast::Type;
 use crate::vmobject::{Scope, VMObejct};
@@ -14,7 +13,6 @@ pub struct VM {
 }
 
 struct CallFrame {
-    function_index: usize,  // 함수 시작 주소
     return_address: usize,  // 종료 후 주소
     base_pointer: usize,    // 함수 내부에서 사용하는 스택 부분
 }
@@ -49,9 +47,6 @@ impl VM {
         // len 만 남기고 뒤에는 삭제
         self.stack.truncate(len);
     }
-    fn pop_stack(&mut self) -> VMObejct {
-        self.stack.pop().expect("Stack underflow")
-    }
 
     fn push_register(&mut self, value: VMObejct){
         self.register.push(value);
@@ -82,13 +77,6 @@ impl VM {
             VMObejct::Null | VMObejct::Bool(false) | VMObejct::I64(0) => false,
             VMObejct::F64(v) => v < f64::EPSILON || v > -f64::EPSILON,
             _ => true
-        }
-    }
-
-    fn is_error(object: &VMObejct) -> bool {
-        match object {
-            VMObejct::Error(_) => true,
-            _ => false,
         }
     }
 
@@ -181,7 +169,7 @@ impl VM {
 
     fn op_function_expression(&mut self) {
         // return params_length body_length| params[0x52 type, 0x52 type, ...] body
-        let return_type = self.read_byte();
+        self.read_byte();
         let param_count = self.read_u16() as usize;
         let body_size = self.read_u16() as usize;
 
@@ -474,10 +462,10 @@ impl VM {
         &mut self, function_index: usize, return_address:usize,
         arg_count: usize, body_size: usize) -> bool {
         let frame = CallFrame {
-            function_index,
             return_address,
             base_pointer: self.stack.len(),
         };
+        let end = self.call_stack.len();
         self.call_stack.push(frame);
         self.ip = function_index;
         // params[0x52 type, 0x52 type, ...] body
@@ -487,7 +475,7 @@ impl VM {
         self.execute_block(body_size);
 
         // return 명령어가 없는 void 를 출력하는 함수일 경우
-        if self.call_stack.len() > 0 {
+        if self.call_stack.len() > end {
             let frame = self.call_stack.pop().expect("Call Stack Underflow");
             self.ip = frame.return_address;
             self.truncate_stack(frame.base_pointer);
@@ -517,10 +505,6 @@ impl BytecodeEngine {
         }
     }
 
-    pub fn run(&mut self) {
-
-    }
-
     pub fn set(&mut self, constants: Vec<VMObejct>,
                bytecode: Vec<u8>,
                scope:Scope) {
@@ -528,23 +512,26 @@ impl BytecodeEngine {
         self.virtual_machine.run(bytecode, constants);
     }
 
-    pub fn call_function(&mut self, name:String, params: Vec<VMObejct>) -> VMObejct {
+    pub fn call_function(&mut self, name:String, params: Vec<VMObejct>) -> Option<VMObejct> {
         if let Some((addr, _)) = self.scope.stack.get(&name) {
             if self.virtual_machine.call_function(*addr, params) {
-                return self.virtual_machine.pop_register();
+                return Some(self.virtual_machine.pop_register());
+            }else {
+                return None;
             }
         }
-        return VMObejct::Error(format!("해당하는 식별자:{0} 함수 없음.",name));
+        return Some(VMObejct::Error(format!("해당하는 함수 식별자({0})가 없습니다.",name)));
     }
 
     pub fn call_variable(&mut self, name:String) -> VMObejct {
         if let Some((addr, _)) = self.scope.stack.get(&name) {
             return self.virtual_machine.call_variable(*addr);
         }
-        return VMObejct::Error(format!("해당하는 식별자:{0} 변수 없음.",name));
+        return VMObejct::Error(format!("해당하는 변수 식별자({0})가 없습니다.",name));
     }
 
     pub fn print(&self) {
+        println!("{:?}", self.virtual_machine.constants);
         println!("{:?}", self.virtual_machine.stack);
     }
 }
