@@ -1019,6 +1019,21 @@
 <a href="#1018" id="1018">1018</a>
 <a href="#1019" id="1019">1019</a>
 <a href="#1020" id="1020">1020</a>
+<a href="#1021" id="1021">1021</a>
+<a href="#1022" id="1022">1022</a>
+<a href="#1023" id="1023">1023</a>
+<a href="#1024" id="1024">1024</a>
+<a href="#1025" id="1025">1025</a>
+<a href="#1026" id="1026">1026</a>
+<a href="#1027" id="1027">1027</a>
+<a href="#1028" id="1028">1028</a>
+<a href="#1029" id="1029">1029</a>
+<a href="#1030" id="1030">1030</a>
+<a href="#1031" id="1031">1031</a>
+<a href="#1032" id="1032">1032</a>
+<a href="#1033" id="1033">1033</a>
+<a href="#1034" id="1034">1034</a>
+<a href="#1035" id="1035">1035</a>
 </pre></div><pre class="rust"><code><span class="doccomment">//! 해당 라이브러리는 Rust 문법을 사용하는 인터프리터 엔진을 제공합니다.
 //!
 //! # 자동 캐스팅 지원
@@ -1041,10 +1056,11 @@
 <span class="kw">use </span><span class="kw">crate</span>::interpreter::environment::Environment;
 <span class="kw">use </span>interpreter::Interpreter;
 <span class="kw">use </span>std::fmt;
-<span class="kw">use </span>rustc_hash::FxHashMap;
+<span class="kw">use </span><span class="kw">crate</span>::ast::<span class="kw-2">*</span>;
 <span class="kw">use </span><span class="kw">crate</span>::parser::parser::Parser;
 <span class="kw">use </span><span class="kw">crate</span>::tokenizer::tokenizer::Tokenizer;
 <span class="kw">use </span><span class="kw">crate</span>::virtualmachine::BytecodeEngine;
+<span class="kw">use </span><span class="kw">crate</span>::vm::<span class="kw-2">*</span>;
 
 <span class="kw">mod </span>tokenizer;
 <span class="kw">mod </span>parser;
@@ -1060,7 +1076,7 @@
 
 
 </span><span class="doccomment">/// # 인터프리터 엔진
-/// 쉬운 생성 및 쉬운 컴파일링 가능
+/// 쉬운 생성 및 쉬운 컴파일링이 가능합니다.
 </span><span class="kw">pub struct </span>InterustCompiler {
     interpreter: Interpreter,
     compiler: Compiler,
@@ -1311,7 +1327,7 @@
 }
 
 <span class="doccomment">/// # 가상 머신
-/// 컴파일된 파일 실행 및 외부에서 함수 및 변수를 호출 가능
+/// 컴파일된 파일 실행하고, 외부에서 함수 및 변수를 호출 가능합니다.
 </span><span class="kw">pub struct </span>InterustVM {
     bytecode_engine:BytecodeEngine,
 }
@@ -1373,7 +1389,7 @@
 
     <span class="doccomment">/// 외부에서 가상 머신 내에 존재하는 함수를 호출합니다.&lt;br/&gt;
     /// 함수는 가상 머신 내에서 동작하며 반환값이 없는 경우 None을 반환합니다.&lt;br/&gt;
-    /// 연산 중 오류가 발생하면, VMObject::Error() 를 반환합니다.
+    /// 연산 중 오류가 발생하거나 함수를 찾을 수 없으면, VMObject::Error() 를 반환합니다.
     /// # 매개변수
     /// - `name` : `String` 타입, 호출할 함수 식별자&lt;br/&gt;
     /// - `params` : `Vec&lt;VMObejct&gt;` 타입, 함수에 전달될 매개변수들&lt;br/&gt;
@@ -1391,15 +1407,17 @@
     ///
     /// let mut interust_vm = InterustVM::new();
     /// interust_vm.import_compiled("test_export.irs");
-    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:1
-    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:2
+    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
+    /// // count:1
+    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
+    /// // count:2
     /// assert_eq!(return_value, None);
     /// ```
     </span><span class="kw">pub fn </span>call_compiled_fn(<span class="kw-2">&amp;mut </span><span class="self">self</span>, name:String, params: Vec&lt;VMObejct&gt;) -&gt; <span class="prelude-ty">Option</span>&lt;VMObejct&gt; {
         <span class="self">self</span>.bytecode_engine.call_function(name, params)
     }
     <span class="doccomment">/// 외부에서 가상 머신 내에 존재하는 변수를 호출합니다.&lt;br/&gt;
-    /// 연산 중 오류가 발생하면, VMObject::Error() 를 반환합니다.
+    /// 변수를 찾을 수 없으면, VMObject::Error() 를 반환합니다.
     /// # 매개변수
     /// - `name` : `String` 타입, 호출할 변수 식별자&lt;br/&gt;
     /// # 예제
@@ -1417,7 +1435,8 @@
     ///
     /// let mut interust_vm = InterustVM::new();
     /// interust_vm.import_compiled("test_export.irs");
-    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:1
+    /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
+    /// // count:1
     /// let value = interust_vm.call_compiled_var(String::from("count"));
     /// assert_eq!(value, VMObejct::I64(1));
     /// ```
@@ -1444,7 +1463,8 @@
     ///
     /// let mut interust_vm = InterustVM::new();
     /// interust_vm.import_compiled("test_export.irs");
-    /// interust_vm.call_compiled_fn(String::from("add"), vec![]); // count:1
+    /// interust_vm.call_compiled_fn(String::from("add"), vec![]);
+    /// // count:1
     /// interust_vm.print();
     /// ```
     </span><span class="kw">pub fn </span>print(<span class="kw-2">&amp;</span><span class="self">self</span>) {
@@ -1704,7 +1724,9 @@ mod test {
 }
 */
 
-</span><span class="doccomment">/// 인터프리터 해석기에서 토크나이징할 때 사용할 토큰들
+</span><span class="kw">pub type </span>Program = Vec&lt;Statement&gt;;
+
+<span class="doccomment">/// 인터프리터 해석기에서 토크나이징할 때 사용할 토큰들
 </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
 </span><span class="kw">pub enum </span>Token {
     Let,                    <span class="comment">// let 변수 생성
@@ -1804,238 +1826,246 @@ mod test {
     }
 }
 
-<span class="kw">pub type </span>Program = Vec&lt;Statement&gt;;
+<span class="doccomment">/// # 인터프리터에서 활용할 추상 구문 트리(AST)
+</span><span class="kw">pub mod </span>ast {
+    <span class="doccomment">/// 추상 구문 상수
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>Literal {
+        <span class="prelude-val">None</span>,                   <span class="comment">// 0x01
+        </span>I64(i64),               <span class="comment">// 0x02
+        </span>F64(f64),               <span class="comment">// 0x03
+        //u64                   // 0x04
+        //i32                   // 0x05
+        //f32                   // 0x06
+        //u32                   // 0x07
+        //i16                   // 0x08
+        //u16                   // 0x09
+        //i8                    // 0x0A
+        //u8                    // 0x0B
+        </span>Bool(bool),             <span class="comment">// 0x0C
+        //Vec                   // 0x0D
+        //Map                   // 0x0E
+        </span>String(String),         <span class="comment">// 0x0F
+    </span>}
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 상수들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>Literal {
-   <span class="prelude-val">None</span>,                   <span class="comment">// 0x01
-   </span>I64(i64),               <span class="comment">// 0x02
-   </span>F64(f64),               <span class="comment">// 0x03
-   //u64                   // 0x04
-   //i32                   // 0x05
-   //f32                   // 0x06
-   //u32                   // 0x07
-   //i16                   // 0x08
-   //u16                   // 0x09
-   //i8                    // 0x0A
-   //u8                    // 0x0B
-   </span>Bool(bool),             <span class="comment">// 0x0C
-   //Vec                   // 0x0D
-   //Map                   // 0x0E
-   </span>String(String),         <span class="comment">// 0x0F
-</span>}
-
-<span class="kw">impl </span>Literal{
-    <span class="kw">pub fn </span>get_type(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Type{
-        <span class="kw">match </span><span class="self">self </span>{
-            Literal::F64(<span class="kw">_</span>) =&gt; Type::F64,
-            Literal::I64(<span class="kw">_</span>) =&gt; Type::I64,
-            Literal::String(<span class="kw">_</span>) =&gt; Type::String,
-            Literal::Bool(<span class="kw">_</span>) =&gt; Type::Bool,
-            Literal::None =&gt; Type::None,
+    <span class="kw">impl </span>Literal{
+        <span class="kw">pub fn </span>get_type(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Type{
+            <span class="kw">match </span><span class="self">self </span>{
+                Literal::F64(<span class="kw">_</span>) =&gt; Type::F64,
+                Literal::I64(<span class="kw">_</span>) =&gt; Type::I64,
+                Literal::String(<span class="kw">_</span>) =&gt; Type::String,
+                Literal::Bool(<span class="kw">_</span>) =&gt; Type::Bool,
+                Literal::None =&gt; Type::None,
+            }
         }
     }
-}
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 타입들
-</span><span class="attr">#[allow(non_camel_case_types)]
-#[repr(u8)]
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
-</span><span class="kw">pub enum </span>Type {
-    <span class="prelude-val">None        </span>=       <span class="number">0x71</span>,
-    I64         =       <span class="number">0x72</span>,
-    F64         =       <span class="number">0x73</span>,
-    <span class="comment">//u64       =       0x74,
-    //i32       =       0x75,
-    //f32       =       0x76,
-    //u32       =       0x77,
-    //i16       =       0x78,
-    //u16       =       0x79,
-    //i8        =       0x7A,
-    //u8        =       0x7B,
-    </span>Bool        =       <span class="number">0x7C</span>,
-    <span class="comment">//Vec       =       0x7D,
-    //Map       =       0x7E,
-    </span>String      =       <span class="number">0x7F</span>,
-}
+    <span class="doccomment">/// 추상 구문 타입
+    </span><span class="attr">#[allow(non_camel_case_types)]
+    #[repr(u8)]
+    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+    </span><span class="kw">pub enum </span>Type {
+        <span class="prelude-val">None        </span>=       <span class="number">0x71</span>,
+        I64         =       <span class="number">0x72</span>,
+        F64         =       <span class="number">0x73</span>,
+        <span class="comment">//u64       =       0x74,
+        //i32       =       0x75,
+        //f32       =       0x76,
+        //u32       =       0x77,
+        //i16       =       0x78,
+        //u16       =       0x79,
+        //i8        =       0x7A,
+        //u8        =       0x7B,
+        </span>Bool        =       <span class="number">0x7C</span>,
+        <span class="comment">//Vec       =       0x7D,
+        //Map       =       0x7E,
+        </span>String      =       <span class="number">0x7F</span>,
+    }
 
-<span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>Type {
-    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
-        <span class="kw">match </span><span class="kw-2">*</span><span class="self">self </span>{
-            Type::F64 =&gt; <span class="macro">write!</span>(f, <span class="string">"f64"</span>),
-            Type::I64 =&gt; <span class="macro">write!</span>(f, <span class="string">"i64"</span>),
-            Type::String =&gt; <span class="macro">write!</span>(f, <span class="string">"string"</span>),
-            Type::Bool =&gt; <span class="macro">write!</span>(f, <span class="string">"bool"</span>),
-            Type::None =&gt; <span class="macro">write!</span>(f, <span class="string">"var"</span>),
+    <span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>Type {
+        <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+            <span class="kw">match </span><span class="kw-2">*</span><span class="self">self </span>{
+                Type::F64 =&gt; <span class="macro">write!</span>(f, <span class="string">"f64"</span>),
+                Type::I64 =&gt; <span class="macro">write!</span>(f, <span class="string">"i64"</span>),
+                Type::String =&gt; <span class="macro">write!</span>(f, <span class="string">"string"</span>),
+                Type::Bool =&gt; <span class="macro">write!</span>(f, <span class="string">"bool"</span>),
+                Type::None =&gt; <span class="macro">write!</span>(f, <span class="string">"var"</span>),
+            }
         }
     }
-}
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 연산들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>Infix {
-    Plus        = <span class="number">0x20</span>,     <span class="comment">// +
-    </span>Minus       = <span class="number">0x21</span>,     <span class="comment">// -
-    </span>Multiply    = <span class="number">0x22</span>,     <span class="comment">// *
-    </span>Divide      = <span class="number">0x23</span>,     <span class="comment">// /
-    </span>Mod         = <span class="number">0x24</span>,     <span class="comment">// %
-    </span>Equal       = <span class="number">0x25</span>,     <span class="comment">// ==
-    </span>NotEqual    = <span class="number">0x26</span>,     <span class="comment">// !=
-    </span>LessThan    = <span class="number">0x27</span>,     <span class="comment">// &lt;
-    </span>GreaterThan = <span class="number">0x28</span>,     <span class="comment">// &gt;
-    </span>And         = <span class="number">0x29</span>,     <span class="comment">// &amp;&amp;
-    </span>Or          = <span class="number">0x2A</span>,     <span class="comment">// ||
-    </span>BitAnd      = <span class="number">0x2B</span>,     <span class="comment">// &amp;
-    </span>BitOr       = <span class="number">0x2C</span>,     <span class="comment">// |
-</span>}
+    <span class="doccomment">/// 추상 구문 연산
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>Infix {
+        Plus        = <span class="number">0x20</span>,     <span class="comment">// +
+        </span>Minus       = <span class="number">0x21</span>,     <span class="comment">// -
+        </span>Multiply    = <span class="number">0x22</span>,     <span class="comment">// *
+        </span>Divide      = <span class="number">0x23</span>,     <span class="comment">// /
+        </span>Mod         = <span class="number">0x24</span>,     <span class="comment">// %
+        </span>Equal       = <span class="number">0x25</span>,     <span class="comment">// ==
+        </span>NotEqual    = <span class="number">0x26</span>,     <span class="comment">// !=
+        </span>LessThan    = <span class="number">0x27</span>,     <span class="comment">// &lt;
+        </span>GreaterThan = <span class="number">0x28</span>,     <span class="comment">// &gt;
+        </span>And         = <span class="number">0x29</span>,     <span class="comment">// &amp;&amp;
+        </span>Or          = <span class="number">0x2A</span>,     <span class="comment">// ||
+        </span>BitAnd      = <span class="number">0x2B</span>,     <span class="comment">// &amp;
+        </span>BitOr       = <span class="number">0x2C</span>,     <span class="comment">// |
+    </span>}
 
-<span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>Infix {
-    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
-        <span class="kw">match </span><span class="kw-2">*</span><span class="self">self </span>{
-            Infix::Plus =&gt; <span class="macro">write!</span>(f, <span class="string">"+"</span>),
-            Infix::Minus =&gt; <span class="macro">write!</span>(f, <span class="string">"-"</span>),
-            Infix::Multiply =&gt; <span class="macro">write!</span>(f, <span class="string">"*"</span>),
-            Infix::Divide =&gt; <span class="macro">write!</span>(f, <span class="string">"/"</span>),
-            Infix::Mod =&gt; <span class="macro">write!</span>(f, <span class="string">"%"</span>),
-            Infix::Equal =&gt; <span class="macro">write!</span>(f, <span class="string">"=="</span>),
-            Infix::NotEqual =&gt; <span class="macro">write!</span>(f, <span class="string">"!="</span>),
-            Infix::LessThan =&gt; <span class="macro">write!</span>(f, <span class="string">"&lt;"</span>),
-            Infix::GreaterThan =&gt; <span class="macro">write!</span>(f, <span class="string">"&gt;"</span>),
-            Infix::And =&gt; <span class="macro">write!</span>(f, <span class="string">"&amp;&amp;"</span>),
-            Infix::Or =&gt; <span class="macro">write!</span>(f, <span class="string">"||"</span>),
-            Infix::BitAnd =&gt; <span class="macro">write!</span>(f, <span class="string">"&amp;"</span>),
-            Infix::BitOr =&gt; <span class="macro">write!</span>(f, <span class="string">"|"</span>),
+    <span class="kw">impl </span>std::fmt::Display <span class="kw">for </span>Infix {
+        <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+            <span class="kw">match </span><span class="kw-2">*</span><span class="self">self </span>{
+                Infix::Plus =&gt; <span class="macro">write!</span>(f, <span class="string">"+"</span>),
+                Infix::Minus =&gt; <span class="macro">write!</span>(f, <span class="string">"-"</span>),
+                Infix::Multiply =&gt; <span class="macro">write!</span>(f, <span class="string">"*"</span>),
+                Infix::Divide =&gt; <span class="macro">write!</span>(f, <span class="string">"/"</span>),
+                Infix::Mod =&gt; <span class="macro">write!</span>(f, <span class="string">"%"</span>),
+                Infix::Equal =&gt; <span class="macro">write!</span>(f, <span class="string">"=="</span>),
+                Infix::NotEqual =&gt; <span class="macro">write!</span>(f, <span class="string">"!="</span>),
+                Infix::LessThan =&gt; <span class="macro">write!</span>(f, <span class="string">"&lt;"</span>),
+                Infix::GreaterThan =&gt; <span class="macro">write!</span>(f, <span class="string">"&gt;"</span>),
+                Infix::And =&gt; <span class="macro">write!</span>(f, <span class="string">"&amp;&amp;"</span>),
+                Infix::Or =&gt; <span class="macro">write!</span>(f, <span class="string">"||"</span>),
+                Infix::BitAnd =&gt; <span class="macro">write!</span>(f, <span class="string">"&amp;"</span>),
+                Infix::BitOr =&gt; <span class="macro">write!</span>(f, <span class="string">"|"</span>),
+            }
         }
     }
-}
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 접두연산들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>Prefix {
-    Minus       = <span class="number">0x40</span>,
-    Not         = <span class="number">0x41</span>,
-}
+    <span class="doccomment">/// 추상 구문 접두연산
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>Prefix {
+        Minus       = <span class="number">0x40</span>,
+        Not         = <span class="number">0x41</span>,
+    }
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 상태들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>Statement {
-    Let{                                <span class="comment">// 0x50 from to[0x52 addr type]
+    <span class="doccomment">/// 추상 구문 상태
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>Statement {
+        Let{                                <span class="comment">// 0x50 from to[0x52 addr type]
         </span>variable: Expression,
-        expression: <span class="prelude-ty">Option</span>&lt;Expression&gt;
-    },
-    Return(Expression),                 <span class="comment">// 0x51 exp
-    </span>Expression(Expression),
-}
+            expression: <span class="prelude-ty">Option</span>&lt;Expression&gt;
+        },
+        Return(Expression),                 <span class="comment">// 0x51 exp
+        </span>Expression(Expression),
+    }
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 구문들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>Expression {
-    Variable(String, Type),             <span class="comment">// 0x52 type
-    </span>Identifier(String),                 <span class="comment">// 변수 로드 = 0x53 addr
-    </span>Insert {                            <span class="comment">// 0x54 from to
+    <span class="doccomment">/// 추상 구문 구문
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>Expression {
+        Variable(String, Type),             <span class="comment">// 0x52 type
+        </span>Identifier(String),                 <span class="comment">// 변수 로드 = 0x53 addr
+        </span>Insert {                            <span class="comment">// 0x54 from to
         </span>variable:  Box&lt;Expression&gt;,
-        expression: Box&lt;Expression&gt;
-    },
-    If {                                <span class="comment">// 0x55 cond cons_length alter_length cons (alter)
+            expression: Box&lt;Expression&gt;
+        },
+        If {                                <span class="comment">// 0x55 cond cons_length alter_length cons (alter)
         </span>condition: Box&lt;Expression&gt;,
-        consequence: Vec&lt;Statement&gt;,
-        alternative: <span class="prelude-ty">Option</span>&lt;Vec&lt;Statement&gt;&gt;,
-    },
-    Fn {                                <span class="comment">// 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
+            consequence: Vec&lt;Statement&gt;,
+            alternative: <span class="prelude-ty">Option</span>&lt;Vec&lt;Statement&gt;&gt;,
+        },
+        Fn {                                <span class="comment">// 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
         </span>identifier: String,
-        return_type: Type,
-        parameters: Vec&lt;Expression&gt;,
-        body: Vec&lt;Statement&gt;,
-    },
-    Call {                              <span class="comment">// 0x57 addr args_length args[0x53 index, 0x53 index, ...]
+            return_type: Type,
+            parameters: Vec&lt;Expression&gt;,
+            body: Vec&lt;Statement&gt;,
+        },
+        Call {                              <span class="comment">// 0x57 addr args_length args[0x53 index, 0x53 index, ...]
         </span>function: Box&lt;Expression&gt;,
-        arguments: Vec&lt;Expression&gt;,
-    },
+            arguments: Vec&lt;Expression&gt;,
+        },
 
-    Literal(Literal),
-    Prefix(Prefix, Box&lt;Expression&gt;),
-    Infix(
-        Infix,
-        Box&lt;Expression&gt;,
-        Box&lt;Expression&gt;
-    ),
+        Literal(Literal),
+        Prefix(Prefix, Box&lt;Expression&gt;),
+        Infix(
+            Infix,
+            Box&lt;Expression&gt;,
+            Box&lt;Expression&gt;
+        ),
+    }
+
+    <span class="doccomment">/// 추상 구문 우선순위
+    </span><span class="attr">#[derive(PartialEq, PartialOrd)]
+    </span><span class="kw">pub enum </span>Precedence {
+        Lowest,
+        Assign,         <span class="comment">// =
+        </span>Bool,           <span class="comment">// &amp;&amp; or ||
+        </span>Equals,         <span class="comment">// == or !=
+        </span>LessGreater,    <span class="comment">// &gt; or &lt;
+        </span>Sum,            <span class="comment">// +
+        </span>Product,        <span class="comment">// *
+        </span>Bit,            <span class="comment">// &amp; or |
+        </span>Prefix,         <span class="comment">// -X or !X
+        </span>Call,           <span class="comment">// myFunction(X)
+    </span>}
+
 }
 
-<span class="doccomment">/// 인터프리터 해석기에서 추상 구문 트리(AST)로 변환할 때 사용할 연산 우선순위들
-</span><span class="attr">#[derive(PartialEq, PartialOrd)]
-</span><span class="kw">pub enum </span>Precedence {
-    Lowest,
-    Assign,         <span class="comment">// =
-    </span>Bool,           <span class="comment">// &amp;&amp; or ||
-    </span>Equals,         <span class="comment">// == or !=
-    </span>LessGreater,    <span class="comment">// &gt; or &lt;
-    </span>Sum,            <span class="comment">// +
-    </span>Product,        <span class="comment">// *
-    </span>Bit,            <span class="comment">// &amp; or |
-    </span>Prefix,         <span class="comment">// -X or !X
-    </span>Call,           <span class="comment">// myFunction(X)
-</span>}
+<span class="doccomment">/// # 가상 머신에서 활용할 열거자 및 테이블
+</span><span class="kw">pub mod </span>vm {
+    <span class="kw">use </span>std::fmt;
+    <span class="kw">use </span>rustc_hash::FxHashMap;
+    <span class="kw">use </span><span class="kw">crate</span>::ast::Type;
 
+    <span class="doccomment">/// 가상 머신 객체
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>VMObejct {
+        Null,
+        I64(i64),
+        F64(f64),
+        Bool(bool),
+        String(String),
+        Fn(usize, u8, usize), <span class="comment">// 함수의 시작 주소, 매개변수 개수, 바디의 크기
+        </span>Error(String)
+    }
 
-<span class="doccomment">/// VM 에서 사용할 객체들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>VMObejct {
-    Null,
-    I64(i64),
-    F64(f64),
-    Bool(bool),
-    String(String),
-    Fn(usize, u8, usize), <span class="comment">// 함수의 시작 주소, 매개변수 개수, 바디의 크기
-    </span>Error(String)
-}
-
-<span class="kw">impl </span>fmt::Display <span class="kw">for </span>VMObejct {
-    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
-        <span class="kw">match </span><span class="kw-2">*</span><span class="self">self </span>{
-            VMObejct::F64(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
-            VMObejct::I64(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
-            VMObejct::Bool(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
-            VMObejct::String(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
-            VMObejct::Fn(<span class="kw-2">ref </span>addr, <span class="kw-2">ref </span>params_count, <span class="kw-2">ref </span>body_size) =&gt;
-                <span class="macro">write!</span>(f, <span class="string">"fn {addr}:({params_count}) {{{body_size}}}"</span>),
-            VMObejct::Null =&gt; <span class="macro">write!</span>(f, <span class="string">"null"</span>),
-            VMObejct::Error(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
+    <span class="kw">impl </span>fmt::Display <span class="kw">for </span>VMObejct {
+        <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>fmt::Formatter) -&gt; fmt::Result {
+            <span class="kw">match </span><span class="kw-2">*</span><span class="self">self </span>{
+                VMObejct::F64(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
+                VMObejct::I64(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
+                VMObejct::Bool(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
+                VMObejct::String(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
+                VMObejct::Fn(<span class="kw-2">ref </span>addr, <span class="kw-2">ref </span>params_count, <span class="kw-2">ref </span>body_size) =&gt;
+                    <span class="macro">write!</span>(f, <span class="string">"fn {addr}:({params_count}) {{{body_size}}}"</span>),
+                VMObejct::Null =&gt; <span class="macro">write!</span>(f, <span class="string">"null"</span>),
+                VMObejct::Error(<span class="kw-2">ref </span>value) =&gt; <span class="macro">write!</span>(f, <span class="string">"{value}"</span>),
+            }
         }
     }
-}
 
-<span class="doccomment">/// VM 에서 사용할 상수들
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub enum </span>Constant {
-    <span class="prelude-val">None</span>,                   <span class="comment">// 0x01
-    </span>I64(i64),               <span class="comment">// 0x02
-    </span>F64(f64),               <span class="comment">// 0x03
-    //u64                   // 0x04
-    //i32                   // 0x05
-    //f32                   // 0x06
-    //u16                   // 0x07
-    //i16                   // 0x08
-    //u16                   // 0x09
-    //i8                    // 0x0A
-    //u8                    // 0x0B
-    </span>Bool(bool),             <span class="comment">// 0x0C
-    //Vec                   // 0x0D
-    //Map                   // 0x0E
-    </span>String(String),         <span class="comment">// 0x0F
-</span>}
+    <span class="doccomment">/// 가상 머신 상수
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub enum </span>Constant {
+        <span class="prelude-val">None</span>,                   <span class="comment">// 0x01
+        </span>I64(i64),               <span class="comment">// 0x02
+        </span>F64(f64),               <span class="comment">// 0x03
+        //u64                   // 0x04
+        //i32                   // 0x05
+        //f32                   // 0x06
+        //u16                   // 0x07
+        //i16                   // 0x08
+        //u16                   // 0x09
+        //i8                    // 0x0A
+        //u8                    // 0x0B
+        </span>Bool(bool),             <span class="comment">// 0x0C
+        //Vec                   // 0x0D
+        //Map                   // 0x0E
+        </span>String(String),         <span class="comment">// 0x0F
+    </span>}
 
-<span class="doccomment">/// VM에서 사용할 변수 혹은 함수 식별자를 담는 테이블
-</span><span class="attr">#[derive(Debug, PartialEq, Clone)]
-</span><span class="kw">pub struct </span>Scope {
-    <span class="doccomment">/// 변수 혹은 함수 식별자를 담는 테이블: 식별자 이름, (주소, 타입)
-    </span><span class="kw">pub </span>table: FxHashMap&lt;String, (usize, Type)&gt;,
-}
+    <span class="doccomment">/// 가상 머신 테이블
+    </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
+    </span><span class="kw">pub struct </span>Scope {
+        <span class="doccomment">/// 변수 혹은 함수 식별자를 담는 테이블: 식별자 이름, (주소, 타입)
+        </span><span class="kw">pub </span>table: FxHashMap&lt;String, (usize, Type)&gt;,
+    }
 
-<span class="kw">impl </span>Scope {
-    <span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
-        Scope {
-            table: FxHashMap::default(),
+    <span class="kw">impl </span>Scope {
+        <span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+            Scope {
+                table: FxHashMap::default(),
+            }
         }
     }
 }

@@ -1,1 +1,1 @@
-window.ALL_CRATES = ["interust"];
+window.ALL_CRATES = ["interust","rustc_hash"];

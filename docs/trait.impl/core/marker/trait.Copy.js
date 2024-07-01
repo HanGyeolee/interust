@@ -1,3 +1,4 @@
 (function() {var implementors = {
-"interust":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.76.0/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"interust/enum.Type.html\" title=\"enum interust::Type\">Type</a>"]]
+"interust":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.76.0/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"enum\" href=\"interust/ast/enum.Type.html\" title=\"enum interust::ast::Type\">Type</a>"]],
+"rustc_hash":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/1.76.0/core/marker/trait.Copy.html\" title=\"trait core::marker::Copy\">Copy</a> for <a class=\"struct\" href=\"rustc_hash/struct.FxBuildHasher.html\" title=\"struct rustc_hash::FxBuildHasher\">FxBuildHasher</a>"]]
 };if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
