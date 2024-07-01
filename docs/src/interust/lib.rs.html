@@ -1828,7 +1828,7 @@ mod test {
 
 <span class="doccomment">/// # 인터프리터에서 활용할 추상 구문 트리(AST)
 </span><span class="kw">pub mod </span>ast {
-    <span class="doccomment">/// 추상 구문 상수
+    <span class="doccomment">/// AST 상수
     </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
     </span><span class="kw">pub enum </span>Literal {
         <span class="prelude-val">None</span>,                   <span class="comment">// 0x01
@@ -1860,7 +1860,7 @@ mod test {
         }
     }
 
-    <span class="doccomment">/// 추상 구문 타입
+    <span class="doccomment">/// AST 타입
     </span><span class="attr">#[allow(non_camel_case_types)]
     #[repr(u8)]
     #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -1894,7 +1894,7 @@ mod test {
         }
     }
 
-    <span class="doccomment">/// 추상 구문 연산
+    <span class="doccomment">/// AST 연산
     </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
     </span><span class="kw">pub enum </span>Infix {
         Plus        = <span class="number">0x20</span>,     <span class="comment">// +
@@ -1932,14 +1932,14 @@ mod test {
         }
     }
 
-    <span class="doccomment">/// 추상 구문 접두연산
+    <span class="doccomment">/// AST 접두연산
     </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
     </span><span class="kw">pub enum </span>Prefix {
         Minus       = <span class="number">0x40</span>,
         Not         = <span class="number">0x41</span>,
     }
 
-    <span class="doccomment">/// 추상 구문 상태
+    <span class="doccomment">/// AST 상태
     </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
     </span><span class="kw">pub enum </span>Statement {
         Let{                                <span class="comment">// 0x50 from to[0x52 addr type]
@@ -1950,7 +1950,7 @@ mod test {
         </span>Expression(Expression),
     }
 
-    <span class="doccomment">/// 추상 구문 구문
+    <span class="doccomment">/// AST 구문
     </span><span class="attr">#[derive(Debug, PartialEq, Clone)]
     </span><span class="kw">pub enum </span>Expression {
         Variable(String, Type),             <span class="comment">// 0x52 type
@@ -1984,7 +1984,7 @@ mod test {
         ),
     }
 
-    <span class="doccomment">/// 추상 구문 우선순위
+    <span class="doccomment">/// AST 우선순위
     </span><span class="attr">#[derive(PartialEq, PartialOrd)]
     </span><span class="kw">pub enum </span>Precedence {
         Lowest,
