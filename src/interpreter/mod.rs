@@ -98,14 +98,20 @@ impl Interpreter {
 
                 return None;
             }
-            Statement::Expression(expression) => {
-                let value = match self.eval_expression(expression) {
-                    Some(value) => value,
-                    None => return None,
-                };
+            Statement::Fn { identifier, parameters, body, return_type } => {
+                let value = Object::Fn(
+                    parameters,
+                    body,
+                    Rc::clone(&self.environment),
+                    return_type
+                );
+                self.environment.borrow_mut().init(identifier, &value);
 
-                Some(value)
-            }
+                return None;
+            },
+            Statement::Class {identifier, members} => {
+                return None;
+            },
             Statement::Return(expression) => {
                 let value = match self.eval_expression(expression) {
                     Some(value) => value,
@@ -117,6 +123,14 @@ impl Interpreter {
                 } else {
                     Some(Object::ReturnValue(Box::new(value)))
                 }
+            }
+            Statement::Expression(expression) => {
+                let value = match self.eval_expression(expression) {
+                    Some(value) => value,
+                    None => return None,
+                };
+
+                Some(value)
             }
         }
     }
@@ -148,16 +162,6 @@ impl Interpreter {
                 consequence,
                 alternative,
             } => self.eval_if_expression(*condition, consequence, alternative),
-            Expression::Fn { identifier, parameters, body, return_type } => {
-                let value = Object::Fn(
-                    parameters,
-                    body,
-                    Rc::clone(&self.environment),
-                    return_type
-                );
-                self.environment.borrow_mut().init(identifier, &value);
-                None
-            },
             Expression::Call {
                 function,
                 arguments,

@@ -68,7 +68,17 @@ impl<'a> Tokenizer<'a>{
                 ']' => { tokens.push(Token::CloseBracket); self.advance(); }
                 ',' => { tokens.push(Token::Comma); self.advance(); }
                 ';' => { tokens.push(Token::Semicolon); self.advance(); }
-                ':' => { tokens.push(Token::Colon); self.advance(); }
+                ':' => {
+                    match self.future().unwrap() {
+                        ':' => {
+                            self.advance();
+                            tokens.push(Token::CallMethod); self.advance();
+                        },
+                        _ => {
+                            tokens.push(Token::Colon); self.advance();
+                        }
+                    };
+                }
                 '0'..='9' => tokens.push(self.read_number()),
                 '"' => tokens.push(self.read_string()),
                 'a'..='z' | 'A'..='Z' | '_' => tokens.push(self.read_identifier()),
@@ -215,6 +225,9 @@ impl<'a> Tokenizer<'a>{
             "while" => Token::While,
             "fn" => Token::Fn,
             "class" => Token::Class,
+            "pub" => Token::Public,
+            "self" => Token::SelfKeyword,
+
             "true" => Token::Bool(true),
             "True" => Token::Bool(true),
             "TRUE" => Token::Bool(true),
@@ -249,6 +262,10 @@ impl<'a> Tokenizer<'a>{
             }
         } else if operator.eq("=") {
             return Token::Assign;
+        } else if operator.eq("&") {
+            if let Some(Token::Identifier(_)) = self.tokenize().last(){ } else {
+                return Token::Ampersand;
+            }
         }
         Token::Operator(operator)
     }

@@ -699,9 +699,11 @@ pub enum Token {
     Return,                 // return
     ReturnType,             // return type
     For,                    // for
-    While,                  // while            미구현
+    While,                  // while
     Fn,                     // function
-    Class,                  // class            미구현
+    Class,                  // class
+    Public,                 // pub
+    SelfKeyword,            // self
 
     Identifier(String),     // 식별자
     F64(f64),               // 실수 숫자
@@ -719,9 +721,12 @@ pub enum Token {
     CloseBracket,           // ]
 
     Assign,                 // =
+    Ampersand,              // &
 
+    Dot,                    // . 미구현
     Comma,                  // ,
     Colon,                  // :
+    CallMethod,             // ::
     Semicolon,              // ;
 
     Comment,                // /* */
@@ -825,25 +830,25 @@ pub mod ast {
     }
 
     /// AST 타입
-    #[allow(non_camel_case_types)]
-    #[repr(u8)]
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
     pub enum Type {
-        None        =       0x71,
-        I64         =       0x72,
-        F64         =       0x73,
-        //u64       =       0x74,
-        //i32       =       0x75,
-        //f32       =       0x76,
-        //u32       =       0x77,
-        //i16       =       0x78,
-        //u16       =       0x79,
-        //i8        =       0x7A,
-        //u8        =       0x7B,
-        Bool        =       0x7C,
-        //Vec       =       0x7D,
-        //Map       =       0x7E,
-        String      =       0x7F,
+        None             ,//=       0x71,
+        I64              ,//=       0x72,
+        F64              ,//=       0x73,
+        //u64            ,//=       0x74,
+        //i32            ,//=       0x75,
+        //f32            ,//=       0x76,
+        //u32            ,//=       0x77,
+        //i16            ,//=       0x78,
+        //u16            ,//=       0x79,
+        //i8             ,//=       0x7A,
+        //u8             ,//=       0x7B,
+        Bool             ,//=       0x7C,
+        //Vec(Type)      ,//=       0x7D,
+        //Map            ,//=       0x7E,
+        String           ,//=       0x7F,
+        Class(String),    //=       0x80,
+        Ref(Box<Type>),   //=       0x81,
     }
 
     impl std::fmt::Display for Type {
@@ -854,6 +859,8 @@ pub mod ast {
                 Type::String => write!(f, "string"),
                 Type::Bool => write!(f, "bool"),
                 Type::None => write!(f, "var"),
+                Type::Class(_) => write!(f, "class"),
+                Type::Ref(_) => write!(f, "ref"),
             }
         }
     }
@@ -906,39 +913,50 @@ pub mod ast {
     /// AST 상태
     #[derive(Debug, PartialEq, Clone)]
     pub enum Statement {
-        Let{                                // 0x50 from to[0x52 addr type]
-        variable: Expression,
+        Let{                                // 0x50 from to[0x54 addr type]
+            variable: Expression,
             expression: Option<Expression>
         },
-        Return(Expression),                 // 0x51 exp
+        Fn {                                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+            identifier: String,
+            return_type: Type,
+            parameters: Vec<Expression>,
+            body: Vec<Statement>,
+        },
+        Class {                             // 0x52
+            identifier: String,
+            members: Vec<ClassMember>
+        },
+        Return(Expression),                 // 0x53 exp
         Expression(Expression),
     }
 
     /// AST 구문
     #[derive(Debug, PartialEq, Clone)]
     pub enum Expression {
-        Variable(String, Type),             // 0x52 type
-        Identifier(String),                 // 변수 로드 = 0x53 addr
-        Insert {                            // 0x54 from to
-        variable:  Box<Expression>,
+        Variable(String, Type),             // 0x54 type
+        Identifier(String),                 // 변수 로드 = 0x55 addr
+        Insert {                            // 0x56 from to
+            variable:  Box<Expression>,
             expression: Box<Expression>
         },
-        If {                                // 0x55 cond cons_length alter_length cons (alter)
-        condition: Box<Expression>,
+        If {                                // 0x57 cond cons_length alter_length cons (alter)
+            condition: Box<Expression>,
             consequence: Vec<Statement>,
             alternative: Option<Vec<Statement>>,
         },
-        Fn {                                // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
-        identifier: String,
-            return_type: Type,
-            parameters: Vec<Expression>,
-            body: Vec<Statement>,
-        },
-        Call {                              // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
-        function: Box<Expression>,
+        Call {                              // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
+            function: Box<Expression>,
             arguments: Vec<Expression>,
         },
-
+        CallMethod {                        // 0x59
+            class: Box<Expression>,
+            call: Box<Expression>,
+        },
+        ClassVariable{                      // 0x60
+            class:Box<Expression>,
+            inits: Vec<Expression>
+        },
         Literal(Literal),
         Prefix(Prefix, Box<Expression>),
         Infix(
@@ -963,6 +981,12 @@ pub mod ast {
         Call,           // myFunction(X)
     }
 
+    /// AST 클래스 속 멤버
+    #[derive(Debug, PartialEq, Clone)]
+    pub enum ClassMember {
+        Variable(bool, Expression),         // pub, let
+        Method(bool, bool, Statement),      // pub, static, fn
+    }
 }
 
 /// # 가상 머신에서 활용할 열거자 및 테이블

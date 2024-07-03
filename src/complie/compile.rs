@@ -1,4 +1,5 @@
 use crate::{Constant, Expression, Infix, Literal, Prefix, Scope, Statement, Type};
+use crate::ast::ClassMember;
 
 pub trait Compile {
     fn compile(&self, compiler: &mut Compiling);
@@ -98,7 +99,41 @@ impl Compile for Literal {
 
 impl Compile for Type {
     fn compile(&self, compiler: &mut Compiling){
-        compiler.emit(self.clone() as u8);
+        match self {
+            Type::None                  => compiler.emit(0x71),
+            Type::I64                   => compiler.emit(0x72),
+            Type::F64                   => compiler.emit(0x73),
+            Type::Bool                  => compiler.emit(0x7C),
+            Type::String                => compiler.emit(0x7F),
+            Type::Class(name)   => {
+                compiler.emit(0x80);
+                let mut index = compiler.scope_index as i128;
+                let mut not_found = true;
+
+                while index > -1 {
+                    let addr_opt = {
+                        let (scope, _) = compiler.get_scope_mut(index as usize);
+                        scope.table.get(name).map(|(addr, _)| addr.clone())
+                    };
+
+                    if let Some(addr) = addr_opt {
+                        compiler.emit(0x55); // 변수 로드 = 0x55 addr
+                        compiler.emit_u16(addr as u16);
+                        not_found = false;
+                        break;
+                    } else {
+                        index -= 1;
+                    }
+                }
+                if not_found {
+                    panic!("{}", format!("컴파일 불가 : 해당하는 클래스({0})를 찾을 수 없습니다.", name));
+                }
+            },
+            Type::Ref(typ)  => {
+                compiler.emit(0x81);
+                typ.compile(compiler);
+            },
+        };
     }
     fn get_length(&self) -> usize { 1 }
 }
@@ -121,7 +156,7 @@ impl Compile for Statement {
     fn compile(&self, compiler: &mut Compiling){
         match self {
             Statement::Let{variable, expression} => {
-                // 0x50 from to[0x52 addr type]
+                // 0x50 from to[0x54 addr type]
                 compiler.emit(0x50); // LET
                 if let Some(expression) = expression {
                     expression.compile(compiler);
@@ -130,8 +165,73 @@ impl Compile for Statement {
                 }
                 variable.compile(compiler);
             }
+            Statement::Fn {identifier, parameters, body, return_type} => {
+                {
+                    let (scope, offset) = compiler.current_scope_mut();
+                    let func_index = scope.table.len() + offset.clone();
+                    if let Some(_) = scope.table.get(identifier){
+                        panic!("{}", format!("컴파일 불가 : 해당하는 함수 식별자({0})가 이미 있습니다.", identifier));
+                    }
+                    scope.table.insert(identifier.clone(), (func_index, return_type.clone()));
+                };
+
+                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+                compiler.emit(0x51);
+                return_type.compile(compiler);
+
+                compiler.emit_u16(parameters.len() as u16);
+                {
+                    let mut size:usize = 0;
+                    for stmt in body {
+                        size += stmt.get_length();
+                    }
+                    compiler.emit_u16(size as u16);
+                }
+
+                let new_scope_offset = {
+                    let (scope, offset) = compiler.current_scope_mut();
+                    scope.table.len() + offset.clone()
+                };
+                compiler.push_scope(new_scope_offset);
+                for stmt in parameters {
+                    stmt.compile(compiler);
+                }
+                for stmt in body {
+                    stmt.compile(compiler);
+                }
+                compiler.pop_scope();
+            }
+            Statement::Class {identifier, members} => {
+                {
+                    let (scope, offset) = compiler.current_scope_mut();
+                    let func_index = scope.table.len() + offset.clone();
+                    if let Some(_) = scope.table.get(identifier){
+                        panic!("{}", format!("컴파일 불가 : 해당하는 함수 식별자({0})가 이미 있습니다.", identifier));
+                    }
+                    scope.table.insert(identifier.clone(), (func_index, Type::Class(identifier.clone())));
+                };
+                let cloned = members.clone();
+
+                // 0x52 member_variable_length member_method_size
+                compiler.emit(0x52);
+                let member_variables:Vec<&ClassMember> = cloned.iter().filter(|&x| {
+                    match x {
+                        ClassMember::Variable(_, _) => true,
+                        ClassMember::Method(_, _, _) => false,
+                    }
+                }).collect();
+                let member_methods:Vec<&ClassMember> = cloned.iter().filter(|&x| {
+                    match x {
+                        ClassMember::Variable(_, _) => false,
+                        ClassMember::Method(is_public, is_static, _) =>
+                        is_public.clone() && !is_static.clone(),
+                    }
+                }).collect();
+                compiler.emit_u16(member_variables.len() as u16);
+                compiler.emit_u16(member_methods.len() as u16);
+            }
             Statement::Return(value) => {
-                compiler.emit(0x51); // RETURN
+                compiler.emit(0x53); // RETURN
                 value.compile(compiler);
             }
             Statement::Expression(value) => {
@@ -143,7 +243,7 @@ impl Compile for Statement {
         let mut length = 0;
         match self {
             Statement::Let{variable, expression} => {
-                // 0x50 from to[0x52 addr type]
+                // 0x50 from to[0x54 addr type]
                 length += 1;
                 if let Some(expression) = expression {
                     length += expression.get_length();
@@ -151,6 +251,21 @@ impl Compile for Statement {
                     length += Literal::None.get_length();
                 }
                 length += variable.get_length();
+            }
+            Statement::Fn {parameters, body, return_type, .. } => {
+                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+                length += 1;
+                length += return_type.get_length();
+                length += 4;
+                for stmt in parameters {
+                    length += stmt.get_length();
+                }
+                for stmt in body {
+                    length += stmt.get_length();
+                }
+            }
+            Statement::Class {identifier, members} => {
+                length += 1;
             }
             Statement::Return(value) => {
                 length += 1;
@@ -177,8 +292,8 @@ impl Compile for Expression {
                     scope.table.insert(name.clone(), (index, typ.clone()));
                 };
 
-                // 0x52 type
-                compiler.emit(0x52);
+                // 0x54 type
+                compiler.emit(0x54);
                 typ.compile(compiler);
             }
             Expression::Identifier(name) => {
@@ -192,7 +307,7 @@ impl Compile for Expression {
                     };
 
                     if let Some(addr) = addr_opt {
-                        compiler.emit(0x53); // 변수 로드 = 0x53 addr
+                        compiler.emit(0x55); // 변수 로드 = 0x55 addr
                         compiler.emit_u16(addr as u16);
                         not_found = false;
                         break;
@@ -205,14 +320,14 @@ impl Compile for Expression {
                 }
             }
             Expression::Insert{variable, expression} => {
-                // 0x54 from to
-                compiler.emit(0x54);
+                // 0x56 from to
+                compiler.emit(0x56);
                 expression.compile(compiler);
                 variable.compile(compiler);
             }
             Expression::If{condition, consequence, alternative} => {
-                // 0x55 cond cons_size alter_size cons (alter)
-                compiler.emit(0x55);
+                // 0x57 cond cons_size alter_size cons (alter)
+                compiler.emit(0x57);
                 condition.compile(compiler);
 
                 {
@@ -250,45 +365,9 @@ impl Compile for Expression {
                     compiler.pop_scope();
                 }
             }
-            Expression::Fn {identifier, parameters, body, return_type} => {
-                {
-                    let (scope, offset) = compiler.current_scope_mut();
-                    let func_index = scope.table.len() + offset.clone();
-                    if let Some(_) = scope.table.get(identifier){
-                        panic!("{}", format!("컴파일 불가 : 해당하는 함수 식별자({0})가 이미 있습니다.", identifier));
-                    }
-                    scope.table.insert(identifier.clone(), (func_index, return_type.clone()));
-                };
-
-                // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
-                compiler.emit(0x56);
-                return_type.compile(compiler);
-
-                compiler.emit_u16(parameters.len() as u16);
-                {
-                    let mut size:usize = 0;
-                    for stmt in body {
-                        size += stmt.get_length();
-                    }
-                    compiler.emit_u16(size as u16);
-                }
-
-                let new_scope_offset = {
-                    let (scope, offset) = compiler.current_scope_mut();
-                    scope.table.len() + offset.clone()
-                };
-                compiler.push_scope(new_scope_offset);
-                for stmt in parameters {
-                    stmt.compile(compiler);
-                }
-                for stmt in body {
-                    stmt.compile(compiler);
-                }
-                compiler.pop_scope();
-            }
             Expression::Call {function, arguments} => {
-                // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
-                compiler.emit(0x57);
+                // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
+                compiler.emit(0x58);
                 if let Expression::Identifier(name) = function.as_ref() {
                     let mut index = compiler.scope_index as i128;
                     let mut not_found = true;
@@ -321,6 +400,12 @@ impl Compile for Expression {
                     stmt.compile(compiler);
                 }
             }
+            Expression::CallMethod {class, call} => {
+
+            }
+            Expression::ClassVariable{ class, inits} => {
+
+            }
             Expression::Literal(value) => {
                 value.compile(compiler);
             }
@@ -339,7 +424,7 @@ impl Compile for Expression {
         let mut length = 0;
         match self {
             Expression::Variable(_, typ) => {
-                // 0x52 type
+                // 0x54 type
                 length += 1;
                 length += typ.get_length();
             }
@@ -366,25 +451,19 @@ impl Compile for Expression {
                     }
                 }
             }
-            Expression::Fn {parameters, body, return_type, .. } => {
-                // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
-                length += 1;
-                length += return_type.get_length();
-                length += 4;
-                for stmt in parameters {
-                    length += stmt.get_length();
-                }
-                for stmt in body {
-                    length += stmt.get_length();
-                }
-            }
             Expression::Call {arguments, ..} => {
-                // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
+                // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
                 length += 1;
                 length += 4;
                 for stmt in arguments {
                     length += stmt.get_length();
                 }
+            }
+            Expression::CallMethod {class, call} => {
+
+            }
+            Expression::ClassVariable{ class, inits} => {
+
             }
             Expression::Literal(value) => {
                 length += value.get_length();
