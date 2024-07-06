@@ -740,7 +740,8 @@ pub enum Object {
     I64(i64),
     Bool(bool),
     String(String),
-    Fn(Vec<Expression>, Vec<Statement>, Rc<RefCell<Environment>>, Type),
+    FnDefine(Vec<Expression>, Vec<Statement>, Rc<RefCell<Environment>>, Type),
+    ClassDefine(Vec<ClassMember>, Rc<RefCell<Environment>>), // 외부 environtment
     //LibraryFn(fn(Vec<Object>) -> Object),
     Null,
     ReturnValue(Box<Object>),
@@ -754,7 +755,7 @@ impl fmt::Display for Object {
             Object::I64(ref value) => write!(f, "{value}"),
             Object::Bool(ref value) => write!(f, "{value}"),
             Object::String(ref value) => write!(f, "{value}"),
-            Object::Fn(ref params, _, _, ref return_type) => {
+            Object::FnDefine(ref params, _, _, ref return_type) => {
                 let mut result = String::new();
 
                 for (i, s) in params.iter().enumerate() {
@@ -774,6 +775,41 @@ impl fmt::Display for Object {
 
                 write!(f, "fn({result}) -> {return_type} {{ ... }}")
             }
+            Object::ClassDefine(ref members, _) => {
+                let mut result = String::new();
+
+                for (i, s) in members.iter().enumerate() {
+                    match s {
+                        ClassMember::Variable(is_pub, var) => {
+                            let mut is_public = "";
+                            if *is_pub {
+                                is_public = "pub "
+                            }
+                            if i < 1 {
+                                result.push_str(&format!("{is_public}let {:?}",var));
+                            } else {
+                                result.push_str(&format!(", {is_public}let {:?}",var));
+                            }
+                        },
+                        ClassMember::Method(is_pub , is_sta, _) => {
+                            let mut is_public = "";
+                            if *is_pub {
+                                is_public = "pub "
+                            }
+                            let mut is_static = "";
+                            if *is_sta {
+                                is_static = "&self, "
+                            }
+                            if i < 1 {
+                                result.push_str(&format!("{is_public}fn({is_static} ... )"));
+                            } else {
+                                result.push_str(&format!(", {is_public}fn({is_static} ... )"));
+                            }
+                        }
+                    }
+                }
+                write!(f, "class{{ {result} }}")
+            },
             //Object::LibraryFn(_) => write!(f, "LibraryFunction"),
             Object::Null => write!(f, "null"),
             Object::ReturnValue(ref value) => write!(f, "{value}"),

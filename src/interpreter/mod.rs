@@ -78,7 +78,8 @@ impl Interpreter {
                         let cast = self.eval_cast(&typ, &value);
                         self.environment.borrow_mut().init(name, &cast);
                     }
-                }else {
+                }
+                else {
                     let Expression::Variable(name, typ) = variable else {
                         return Some(Self::error(format!(
                             "wrong expression: {:?} expected but {:?} given",
@@ -99,7 +100,7 @@ impl Interpreter {
                 return None;
             }
             Statement::Fn { identifier, parameters, body, return_type } => {
-                let value = Object::Fn(
+                let value = Object::FnDefine(
                     parameters,
                     body,
                     Rc::clone(&self.environment),
@@ -110,6 +111,12 @@ impl Interpreter {
                 return None;
             },
             Statement::Class {identifier, members} => {
+                let value = Object::ClassDefine(
+                    members,
+                    Rc::clone(&self.environment)
+                );
+                self.environment.borrow_mut().init(identifier, &value);
+
                 return None;
             },
             Statement::Return(expression) => {
@@ -138,6 +145,28 @@ impl Interpreter {
     fn eval_expression(&mut self, expression: Expression) -> Option<Object> {
         match expression {
             Expression::Identifier(identifier) => Some(self.eval_identifier(identifier)),
+            Expression::Insert { variable, expression} => self.eval_insert_expression(*variable, *expression),
+            Expression::If {
+                condition,
+                consequence,
+                alternative,
+            } => self.eval_if_expression(*condition, consequence, alternative),
+            Expression::Call {
+                function,
+                arguments,
+            } => Some(self.eval_call_expression(function, arguments)),
+            Expression::CallMethod {
+                class,
+                call
+            } => {
+                None
+            },
+            Expression::ClassVariable {
+                class,
+                inits
+            } => {
+                None
+            }
             Expression::Literal(literal) => Some(self.eval_literal(literal)),
             Expression::Prefix(prefix, right_expression) => {
                 if let Some(right) = self.eval_expression(*right_expression) {
@@ -156,16 +185,6 @@ impl Interpreter {
                     None
                 }
             }
-            Expression::Insert { variable, expression} => self.eval_insert_expression(*variable, *expression),
-            Expression::If {
-                condition,
-                consequence,
-                alternative,
-            } => self.eval_if_expression(*condition, consequence, alternative),
-            Expression::Call {
-                function,
-                arguments,
-            } => Some(self.eval_call_expression(function, arguments)),
             _ => None
         }
     }
@@ -432,7 +451,7 @@ impl Interpreter {
             .collect::<Vec<_>>();
 
         let (parameters, body, environment, return_type) = match self.eval_expression(*function) {
-            Some(Object::Fn(parameters, body, environment, return_type)) => {
+            Some(Object::FnDefine(parameters, body, environment, return_type)) => {
                 (parameters, body, environment, return_type)
             }
             //Some(Object::LibraryFn(function)) => return function(arguments),

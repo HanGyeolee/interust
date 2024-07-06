@@ -81,6 +81,9 @@ impl<'a> Tokenizer<'a>{
                 }
                 '0'..='9' => tokens.push(self.read_number()),
                 '"' => tokens.push(self.read_string()),
+                '.' => {
+                    tokens.push(Token::Dot); self.advance();
+                }
                 'a'..='z' | 'A'..='Z' | '_' => tokens.push(self.read_identifier()),
                 '/' => {
                     match self.future().unwrap() {
@@ -124,7 +127,15 @@ impl<'a> Tokenizer<'a>{
                 }
                 _ => {
                     if self.is_operator(current_char) {
-                        tokens.push(self.read_operator());
+                        let mut oper = self.read_operator();
+                        if let Token::Operator(s) = oper.clone(){
+                            if s.eq("&") {
+                                if let Some(Token::Identifier(_)) = tokens.last(){ } else {
+                                    oper = Token::Ampersand;
+                                }
+                            }
+                        }
+                        tokens.push(oper);
                     } else {
                         panic!("Unexpected character: {}", current_char);
                     }
@@ -262,10 +273,6 @@ impl<'a> Tokenizer<'a>{
             }
         } else if operator.eq("=") {
             return Token::Assign;
-        } else if operator.eq("&") {
-            if let Some(Token::Identifier(_)) = self.tokenize().last(){ } else {
-                return Token::Ampersand;
-            }
         }
         Token::Operator(operator)
     }
@@ -284,6 +291,7 @@ impl<'a> Tokenizer<'a>{
 
 #[cfg(test)]
 mod test {
+    use crate::parser::parser::Parser;
     use crate::Token;
     use crate::tokenizer::tokenizer::Tokenizer;
 
@@ -374,5 +382,31 @@ mod test {
             assert_eq!(tests[index], validates[index]);
             index = index + 1;
         }
+    }
+
+    #[test]
+    fn test_call_class_method() {
+        let input = r#"
+        class Test {
+            let private:i64;
+            pub let public:f64;
+            pub fn new() -> Test {
+                return Test {
+                    private: 0,
+                    public: 0
+                };
+            }
+
+            pub fn add(&self) {
+                self.public = self.public + 1;
+            }
+        }
+        let a = Test::new();
+        a.add();
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
     }
 }

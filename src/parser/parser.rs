@@ -53,7 +53,7 @@ impl<'a> Parser<'a> {
                     _ => Precedence::Lowest
                 }
             }
-            Token::OpenParen => Precedence::Call,
+            Token::OpenParen | Token::CallMethod | Token::Dot => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }
@@ -223,10 +223,10 @@ impl<'a> Parser<'a> {
     fn parse_class_members(&mut self, identifier:String) -> Vec<ClassMember> {
         let mut members = Vec::new();
 
-        while !self.cur_token_is(&Token::CloseBrace) {
+        while !self.peek_token_is(&Token::CloseBrace) {
             if let Some(member) = self.parse_class_member(identifier.clone()) {
                 members.push(member);
-            } else {
+            }else {
                 self.consume_token();
             }
         }
@@ -261,11 +261,7 @@ impl<'a> Parser<'a> {
                     Some((is_static, param)) => (is_static, param),
                     None => return None,
                 };
-                if self.cur_token_is(&Token::CloseBrace) {
-                    return Some(ClassMember::Method(is_public, is_static, func))
-                } else {
-                    return None;
-                }
+                return Some(ClassMember::Method(is_public, is_static, func))
             }
             _ => None,
         }
@@ -310,14 +306,12 @@ impl<'a> Parser<'a> {
             self.consume_token();
             return Some((is_static, parameters));
         }
-        self.consume_token();
-        if self.expect_peek(&Token::Ampersand) {
+        if self.peek_token_is(&Token::Ampersand) {
             self.consume_token();
             if self.expect_peek(&Token::SelfKeyword) {
                 is_static = false;
                 parameters.push(Expression::Variable(String::from("self"),
                                          Type::Ref(Box::from(Type::Class(class_name)))));
-                self.consume_token();
             } else {
                 return None;
             }
@@ -365,6 +359,7 @@ impl<'a> Parser<'a> {
             Expression::Identifier(_) => Box::from(class),
             _ => return None,
         };
+        self.consume_token();
         if let Some(call) = self.parse_expression(Precedence::Lowest){
             return match call {
                 Expression::Call{..} => {
@@ -466,7 +461,7 @@ impl<'a> Parser<'a> {
             self.consume_token();
         }
 
-        match expression {
+        match expression.clone() {
             Expression::Literal(lit) => {
                 if let Expression::Variable(name, mut typ) = variable {
                     if Type::None == typ {
@@ -482,6 +477,26 @@ impl<'a> Parser<'a> {
                 }
                 None
             },
+            Expression::CallMethod {
+                class, ..
+            } => {
+                if let Expression::Identifier(class_name) = *class {
+                    let object = Type::Class(class_name);
+                    if let Expression::Variable(name, mut typ) = variable {
+                        if Type::None == typ {
+                            typ = object;
+                        } else if object != typ {
+                            // 타입 다름 오류
+                            self.error_variable_type(&typ, &object);
+                        }
+                        return Some(Statement::Let{
+                            variable: Expression::Variable(name, typ),
+                            expression: Some(expression)
+                        });
+                    }
+                }
+                return None;
+            }
             expression => Some(Statement::Let{
                 variable,
                 expression: Some(expression)
@@ -546,6 +561,7 @@ impl<'a> Parser<'a> {
     fn parse_expression(&mut self, precedence: Precedence) -> Option<Expression> {
         // Prefix
         let mut left = match self.current_token() {
+            Token::SelfKeyword => Some(Expression::Identifier(String::from("self"))),
             Token::Identifier(_) => self.parse_identifier_expression(),
             Token::I64(_) => self.parse_i64_expression(),
             Token::F64(_) => self.parse_f64_expression(),
@@ -564,12 +580,12 @@ impl<'a> Parser<'a> {
 
         if let Some(Expression::Identifier(_)) = left.clone() {
             if self.past_token_is(&Token::Return) {
-                return match self.future_token() {
+                match self.future_token() {
                     Token::OpenBrace => {
                         self.consume_token();
-                        self.parse_class_variable_expression(left.unwrap())
+                        return self.parse_class_variable_expression(left.unwrap());
                     },
-                    _ => None
+                    _ => {}
                 };
             }
         }
@@ -600,8 +616,7 @@ impl<'a> Parser<'a> {
                     left = self.parse_call_method_expression(left.unwrap());
                 }
                 Token::Dot => {
-                    self.consume_token();
-                    left = self.parse_call_method_expression(left.unwrap());
+                    // call 변수 혹은 함수
                 }
                 _ => return left,
             }
@@ -969,6 +984,35 @@ mod test {
                 };
             }
         }
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+        println!("{:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_call_class_method() {
+        let input = r#"
+        class Test {
+            let private:i64;
+            pub let public:f64;
+            pub fn new() -> Test {
+                return Test {
+                    private: 0,
+                    public: 0
+                };
+            }
+            pub fn add(&self) {
+                self.public = self.public + 1;
+            }
+        }
+        let a = Test::new();
+        a.add();
         "#;
 
         let mut tokenizer = Tokenizer::new(input);

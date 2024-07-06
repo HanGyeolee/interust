@@ -86,4 +86,8 @@ impl Environment {
             _ => self.store.insert(name, Object::Null),
         };
     }
+
+    pub fn get_all(&self) -> &HashMap<String, Object> {
+        &self.store
+    }
 }
