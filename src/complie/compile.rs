@@ -400,10 +400,10 @@ impl Compile for Expression {
                     stmt.compile(compiler);
                 }
             }
-            Expression::CallMember { from: class, call} => {
+            Expression::CallMember { identifier, call} => {
 
             }
-            Expression::ClassVariable{ class, inits} => {
+            Expression::ClassInstance { identifier, inits} => {
 
             }
             Expression::Literal(value) => {
@@ -459,10 +459,10 @@ impl Compile for Expression {
                     length += stmt.get_length();
                 }
             }
-            Expression::CallMember { from: class, call} => {
+            Expression::CallMember { identifier, call} => {
 
             }
-            Expression::ClassVariable{ class, inits} => {
+            Expression::ClassInstance { identifier, inits} => {
 
             }
             Expression::Literal(value) => {

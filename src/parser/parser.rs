@@ -1,7 +1,6 @@
 use crate::parser::error::{ParseError, ParseErrorKind};
 use crate::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Token, Type};
 use crate::ast::ClassMember;
-use crate::ast::Expression::CallMember;
 
 pub struct Parser<'a> {
     tokens: &'a [Token],
@@ -340,8 +339,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_call_class_member_expression(&mut self, class: Expression, precedence:Precedence) -> Option<Expression> {
-        let class = match class {
-            Expression::Identifier(_) => Box::from(class),
+        let identifier = match class {
+            Expression::Identifier(class_name) => class_name,
             _ => return None,
         };
         self.consume_token();
@@ -365,24 +364,24 @@ impl<'a> Parser<'a> {
 
         let call = Box::new(call.unwrap());
         Some(
-            CallMember {
-                from: class,
+            Expression::CallMember {
+                identifier,
                 call
             }
         )
     }
 
     fn parse_class_variable_expression(&mut self, class:Expression) -> Option<Expression> {
-        let class = match class {
-            Expression::Identifier(_) => Box::from(class),
+        let identifier = match class {
+            Expression::Identifier(class_name) =>class_name,
             _ => return None,
         };
         let inits = match self.parse_class_expression_list(&Token::CloseBrace) {
             Some(arguments) => arguments,
             None => return None,
         };
-        Some(Expression::ClassVariable{
-            class,
+        Some(Expression::ClassInstance {
+            identifier,
             inits
         })
     }
@@ -491,22 +490,20 @@ impl<'a> Parser<'a> {
                 None
             },
             Expression::CallMember {
-                from: class, ..
+                identifier, ..
             } => {
-                if let Expression::Identifier(class_name) = *class {
-                    let object = Type::Class(class_name);
-                    if let Expression::Variable(name, mut typ) = variable {
-                        if Type::None == typ {
-                            typ = object;
-                        } else if object != typ {
-                            // 타입 다름 오류
-                            self.error_variable_type(&typ, &object);
-                        }
-                        return Some(Statement::Let{
-                            variable: Expression::Variable(name, typ),
-                            expression: Some(expression)
-                        });
+                let object = Type::Class(identifier);
+                if let Expression::Variable(name, mut typ) = variable {
+                    if Type::None == typ {
+                        typ = object;
+                    } else if object != typ {
+                        // 타입 다름 오류
+                        self.error_variable_type(&typ, &object);
                     }
+                    return Some(Statement::Let{
+                        variable: Expression::Variable(name, typ),
+                        expression: Some(expression)
+                    });
                 }
                 return None;
             },
@@ -1031,7 +1028,7 @@ mod test {
         }
 
         let a:Test = Test::new();
-        a.add()
+        a.public = 1;
         "#;
 
         let mut tokenizer = Tokenizer::new(input);

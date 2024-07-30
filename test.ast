@@ -9,8 +9,8 @@
                 return_type: Class("Test"),
                 parameters: [],
                 body: [
-                    Return(ClassVariable {
-                        class: Identifier("Test"),
+                    Return(ClassInstance {
+                        identifier: "Test",
                         inits: [
                             Insert {
                                 variable: Identifier("private"),
@@ -67,7 +67,7 @@
     },
     Let {
         variable: Variable("a", Class("Test")),
-        expression: Some(CallMember { from: Identifier("Test"), call: Call { function: Identifier("new"), arguments: [] } })
+        expression: Some(CallMember { identifier: "Test", call: Call { function: Identifier("new"), arguments: [] } })
     },
-    Expression(CallMember { from: Identifier("a"), call: Call { function: Identifier("add"), arguments: [] } })
+    Expression(CallMember { identifier: "a", call: Call { function: Identifier("add"), arguments: [] } })
 ]

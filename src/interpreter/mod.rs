@@ -2,6 +2,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use crate::interpreter::environment::Environment;
 use crate::{Expression, Infix, Literal, Object, Prefix, Program, Statement, Type};
+use crate::ast::ClassMember;
 
 pub mod environment;
 
@@ -111,10 +112,7 @@ impl Interpreter {
                 return None;
             },
             Statement::Class {identifier, members} => {
-                let value = Object::ClassDefine(
-                    members,
-                    Rc::clone(&self.environment)
-                );
+                let value = self.eval_class_define_expression(members);
                 self.environment.borrow_mut().init(identifier, &value);
 
                 return None;
@@ -156,15 +154,14 @@ impl Interpreter {
                 arguments,
             } => Some(self.eval_call_expression(function, arguments)),
             Expression::CallMember {
-                from: class,
+                identifier,
                 call
-            } => {
-                None
-            },
-            Expression::ClassVariable {
-                class,
+            } => Some(self.eval_call_member(identifier, call)),
+            Expression::ClassInstance {
+                identifier,
                 inits
             } => {
+                // TODO 클래스 생성
                 None
             }
             Expression::Literal(literal) => Some(self.eval_literal(literal)),
@@ -351,30 +348,42 @@ impl Interpreter {
         variable: Expression,
         expression: Expression,
     ) -> Option<Object> {
-        let value = match self.eval_expression(expression) {
-            Some(value) => value,
-            None => return None,
-        };
+        match variable {
+            Expression::Identifier(name) => {
+                let value = match self.eval_expression(expression) {
+                    Some(value) => value,
+                    None => return None,
+                };
 
-        if Self::is_error(&value) {
-            Some(value)
-        } else {
-            let Expression::Identifier(name) = variable else {
-                return Some(Self::error(format!(
-                    "wrong expression: {:?} expected but {:?} given",
-                    Expression::Variable("".to_string(), Type::None),
-                    variable,
-                )));
-            };
-            let object = self.environment.borrow().get(&name);
+                if Self::is_error(&value) {
+                    Some(value)
+                } else {
+                    let object = self.environment.borrow().get(&name);
 
-            if let Some(object) = object {
-                let typ = object.get_type();
-                let cast = self.eval_cast(&typ, &value);
-                self.environment.borrow_mut().init(name, &cast);
-            }
+                    if let Some(object) = object {
+                        let typ = object.get_type();
+                        let cast = self.eval_cast(&typ, &value);
+                        self.environment.borrow_mut().init(name, &cast);
+                    }
+                    None
+                }
+            },
+            Expression::CallMember { identifier, call } => {
+                let object = self.environment.borrow().get(&identifier);
 
-            None
+                if let Some(Object::ClassInstance(class_name, fields)) = object {
+                    let current_env = Rc::clone(&self.environment);
+                    self.environment = Rc::clone(&fields);
+                    self.eval_insert_expression(*call.clone(), expression.clone());
+                    self.environment = current_env;
+                }
+                None
+            },
+            _ => return Some(Self::error(format!(
+                "wrong expression: {:?} expected but {:?} given",
+                Expression::Variable("".to_string(), Type::None),
+                variable,
+            )))
         }
     }
 
@@ -493,6 +502,170 @@ impl Interpreter {
             Some(Object::ReturnValue(object)) => Object::ReturnValue(Box::new(self.eval_cast(&return_type, &object))),
             _ => Object::Null,
         }
+    }
+
+    /// 클래스 정의 연결
+    fn eval_class_define_expression(&mut self, members: Vec<ClassMember>) -> Object {
+        let current_env = Rc::clone(&self.environment);
+        let scoped_env = Environment::new_with_outer(Rc::clone(&current_env));
+        self.environment = Rc::new(RefCell::new(scoped_env));
+        let all_members:Vec<ClassMember> = members.iter().filter(|&member| {
+            if let ClassMember::Method(is_public, is_static, func) = member {
+                if *is_public && *is_static {
+                    self.eval_statement(func.clone());
+                    return false;
+                }
+            }
+            true
+        }).map(|member| {member.clone()}).collect();
+        let variable_members = all_members.iter().filter(|&member| {
+            if let ClassMember::Method(_, _, _) = member {
+                return false;
+            }
+            true
+        }).map(|member| {member.clone()}).collect();
+        let func_members = all_members.iter().filter(|&member| {
+            if let ClassMember::Variable(_, _) = member {
+                return false;
+            }
+            true
+        }).map(|member| {member.clone()}).collect();
+
+        let scoped = Rc::clone(&self.environment);
+        self.environment = current_env;
+        Object::ClassDefine(
+            variable_members,               // public static method 를 제외한 모든 멤버변수
+            func_members,                   // public static method 를 제외한 모든 멤버함수
+            scoped,                         // 현재 환경
+            Rc::clone(&self.environment)    // 상위 환경
+        )
+    }
+
+    /// 클래스 멤버 접근
+    fn eval_call_member(&mut self, identifier:String, called:Box<Expression>) -> Object {
+       let from_obj = self.eval_identifier(identifier.clone());
+        // TODO 수정 필요
+        match from_obj {
+            Object::ClassDefine(_, _, pub_static_method_scoped, _) => {
+                return match *called {
+                    Expression::Call { function, arguments} => {
+                        self.eval_class_method_call(function, arguments, pub_static_method_scoped)
+                    },
+                    _ => Object::Null
+                }
+            },
+            Object::ClassInstance(class_name, fields) => {
+                let define = self.environment.borrow_mut().get(&class_name);
+                if let Object::ClassDefine(variable_members, func_members, _, _) = define.unwrap() {
+                    return match *called {
+                        Expression::Call { function, arguments} => {
+                            if let Expression::Identifier(member_name) = *function.clone() {
+                                // public method가 있는 지 확인
+                                let check = func_members.iter().find(|&member| {
+                                    if let ClassMember::Method(is_public, _, Statement::Fn { identifier, .. }) = member {
+                                        return *is_public && (member_name == identifier.clone());
+                                    }
+                                    false
+                                });
+                                if check.is_some() {
+                                    let mut self_arguments = arguments.clone();
+                                    self_arguments.push(Expression::Identifier(identifier));
+                                    return self.eval_class_method_call(function, arguments, fields);
+                                }
+                                return Self::error("The method is inaccessible or does not exist.".to_string())
+                            }
+                            Self::error(format!(
+                                "wrong expression: {:?} expected but {:?} given",
+                                Expression::Identifier("".to_string()),
+                                function,
+                            ))
+                        },
+                        Expression::Identifier( member_name ) => {
+                            // public variable이 있는 지 확인
+                            let check = variable_members.iter().find(|&member|{
+                                if let ClassMember::Variable(is_public, Expression::Identifier(name)) = member{
+                                    return *is_public && (member_name == name.clone());
+                                }
+                                false
+                            });
+                            if check.is_some() {
+                                return fields.borrow_mut().get(&member_name).unwrap();
+                            }
+                            Self::error("The variable is inaccessible or does not exist.".to_string())
+                        },
+                        _ => Object::Null
+                    }
+                }
+                Self::error("There is no class defined.".to_string())
+            }
+            _ => Object::Null
+        }
+    }
+
+    /**
+    클래스 메소드 실행 연결
+     */
+    fn eval_class_method_call(
+        &mut self,
+        function: Box<Expression>,
+        arguments: Vec<Expression>,
+        find_by: Rc<RefCell<Environment>>
+    ) -> Object {
+        if let Expression::Identifier(member_name) = *function {
+            let arguments = arguments
+                .iter()
+                .map(|expression| {
+                    self.eval_expression(expression.clone())
+                        .unwrap_or(Object::Null)
+                })
+                .collect::<Vec<_>>();
+
+            let (parameters, body, environment, return_type) =
+                match find_by.borrow_mut().get(&member_name) {
+                    Some(Object::FnDefine(parameters, body, environment, return_type)) => {
+                        (parameters, body, environment, return_type)
+                    }
+                    //Some(Object::LibraryFn(function)) => return function(arguments),
+                    Some(object) => return Self::error(format!("{object} is not valid function")),
+                    None => return Object::Null,
+                };
+
+            if parameters.len() != arguments.len() {
+                return Self::error(format!(
+                    "wrong number of arguments: {} expected but {} given",
+                    parameters.len(),
+                    arguments.len(),
+                ));
+            }
+
+            let current_env = Rc::clone(&self.environment);
+            let mut scoped_env = Environment::new_with_outer(Rc::clone(&environment));
+            let list = parameters.iter().zip(arguments.iter());
+
+            for (_, (variable, object)) in list.enumerate() {
+                let Expression::Variable(name, typ) = variable else {
+                    return Self::error(format!(
+                        "wrong expression: {:?} expected but {:?} given",
+                        Expression::Variable("".to_string(), Type::None),
+                        variable,
+                    ));
+                };
+                let cast = self.eval_cast(typ, object);
+                scoped_env.init(name.clone(), &cast);
+            }
+
+            self.environment = Rc::new(RefCell::new(scoped_env));
+
+            let object = self.eval_block_statement(body);
+
+            self.environment = current_env;
+
+            return match object {
+                Some(Object::ReturnValue(object)) => Object::ReturnValue(Box::new(self.eval_cast(&return_type, &object))),
+                _ => Object::Null,
+            }
+        }
+        Object::Null
     }
 
     fn eval_block_statement(&mut self, statements: Vec<Statement>) -> Option<Object> {
@@ -820,6 +993,35 @@ mod tests {
             let p = Parser::new(&t).parse();
             println!("{:?}",p);
             assert_eq!(expect, e.eval(p));
+        }
+    }
+
+    #[test]
+    fn test_class_define() {
+        let tests = vec![
+            (r#"
+            class Test {
+                private:i64;
+                pub public:f64;
+                pub fn new() -> Test {
+                    return Test {
+                        private: 0,
+                        public: 0
+                    };
+                }
+                pub fn add(&self) -> f64 {
+                    self.public = self.multi() + 1;
+                    return self.public;
+                }
+                fn multi(&self) {
+                    self.public = self.public * 5;
+                }
+            }"#, None
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
         }
     }
 }
