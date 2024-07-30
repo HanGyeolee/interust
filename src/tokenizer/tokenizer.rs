@@ -72,7 +72,7 @@ impl<'a> Tokenizer<'a>{
                     match self.future().unwrap() {
                         ':' => {
                             self.advance();
-                            tokens.push(Token::CallMethod); self.advance();
+                            tokens.push(Token::CallStaticMember); self.advance();
                         },
                         _ => {
                             tokens.push(Token::Colon); self.advance();
@@ -82,7 +82,7 @@ impl<'a> Tokenizer<'a>{
                 '0'..='9' => tokens.push(self.read_number()),
                 '"' => tokens.push(self.read_string()),
                 '.' => {
-                    tokens.push(Token::Dot); self.advance();
+                    tokens.push(Token::CallMember); self.advance();
                 }
                 'a'..='z' | 'A'..='Z' | '_' => tokens.push(self.read_identifier()),
                 '/' => {

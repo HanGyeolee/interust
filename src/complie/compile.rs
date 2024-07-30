@@ -400,7 +400,7 @@ impl Compile for Expression {
                     stmt.compile(compiler);
                 }
             }
-            Expression::CallMethod {class, call} => {
+            Expression::CallMember { from: class, call} => {
 
             }
             Expression::ClassVariable{ class, inits} => {
@@ -459,7 +459,7 @@ impl Compile for Expression {
                     length += stmt.get_length();
                 }
             }
-            Expression::CallMethod {class, call} => {
+            Expression::CallMember { from: class, call} => {
 
             }
             Expression::ClassVariable{ class, inits} => {

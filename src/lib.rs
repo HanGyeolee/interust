@@ -723,10 +723,10 @@ pub enum Token {
     Assign,                 // =
     Ampersand,              // &
 
-    Dot,                    // . 미구현
+    CallMember,                    // . 미구현
     Comma,                  // ,
     Colon,                  // :
-    CallMethod,             // ::
+    CallStaticMember,             // ::
     Semicolon,              // ;
 
     Comment,                // /* */
@@ -985,8 +985,8 @@ pub mod ast {
             function: Box<Expression>,
             arguments: Vec<Expression>,
         },
-        CallMethod {                        // 0x59
-            class: Box<Expression>,
+        CallMember {                        // 0x59
+            from: Box<Expression>,
             call: Box<Expression>,
         },
         ClassVariable{                      // 0x60
@@ -1003,7 +1003,7 @@ pub mod ast {
     }
 
     /// AST 우선순위
-    #[derive(PartialEq, PartialOrd)]
+    #[derive(PartialEq, PartialOrd, Clone)]
     pub enum Precedence {
         Lowest,
         Assign,         // =

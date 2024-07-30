@@ -155,8 +155,8 @@ impl Interpreter {
                 function,
                 arguments,
             } => Some(self.eval_call_expression(function, arguments)),
-            Expression::CallMethod {
-                class,
+            Expression::CallMember {
+                from: class,
                 call
             } => {
                 None

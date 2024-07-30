@@ -1,10 +1,20 @@
-let five:i64 = 5;
-let ten:f64 = 10;
+class Test {
+    private:i64;
+    pub public:f64;
+    pub fn new() -> Test {
+        return Test {
+            private: 0,
+            public: 0
+        };
+    }
+    pub fn add(&self) -> f64 {
+        self.public = self.multi() + 1;
+        return self.public;
+    }
+    fn multi(&self) {
+        self.public = self.public * 5;
+    }
+}
 
-fn add(x:i64, y) {
-    return x + y;
-};
-
-let result = add(five, ten);
-result = five * ten;
-result
+let a:Test = Test::new();
+a.add()

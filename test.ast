@@ -1,44 +1,73 @@
 [
-    Let { 
-        variable: Variable("five", I64), 
-        expression: Some(Literal(I64(5))) 
-    }, 
-    Let { 
-        variable: Variable("ten", F64), 
-        expression: Some(Literal(I64(10))) 
-    }, 
-    Expression(
-        Fn { 
-            identifier: "add", 
-            return_type: None,
-            parameters: [
-                Variable("x", I64), 
-                Variable("y", None)
-            ],
-            body: [
-                Return(
-                    Infix(Plus, Identifier("x"), Identifier("y"))
-                )
-            ]
-        }
-    ), 
-    Let { 
-        variable: Variable("result", None), 
-        expression: Some(
-            Call { 
-                function: Identifier("add"),
-                arguments: [
-                    Identifier("five"), 
-                    Identifier("ten")
-                ] 
-            }
-        ) 
-    }, 
-    Expression(
-        Insert { 
-            variable: Identifier("result"), 
-            expression: Infix(Multiply, Identifier("five"), Identifier("ten")) 
-        }
-    ), 
-    Expression(Identifier("result"))
+    Class {
+        identifier: "Test",
+        members: [
+            Variable(false, Variable("private", I64)),
+            Variable(true, Variable("public", F64)),
+            Method(true, true, Fn {
+                identifier: "new",
+                return_type: Class("Test"),
+                parameters: [],
+                body: [
+                    Return(ClassVariable {
+                        class: Identifier("Test"),
+                        inits: [
+                            Insert {
+                                variable: Identifier("private"),
+                                expression: Literal(I64(0))
+                            },
+                            Insert {
+                                variable: Identifier("public"),
+                                expression: Literal(I64(0))
+                            }
+                        ]
+                    })
+                ]
+            }),
+            Method(true, false, Fn {
+                identifier: "add",
+                return_type: F64,
+                parameters: [
+                    Variable("self", Ref(Class("Test")))
+                ],
+                body: [
+                    Expression(Insert {
+                        variable: CallMember {
+                            from: Identifier("self"),
+                            call: Identifier("public")
+                        },
+                        expression: Infix(Plus, CallMember {
+                            from: Identifier("self"),
+                            call: Call { function: Identifier("multi"), arguments: [] }
+                        }, Literal(I64(1)))
+                    }),
+                    Return(CallMember {
+                        from: Identifier("self"),
+                        call: Identifier("public")
+                    })
+                ]
+            }),
+            Method(false, false, Fn {
+                identifier: "multi",
+                return_type: None,
+                parameters: [
+                    Variable("self", Ref(Class("Test")))
+                ],
+                body: [
+                    Expression(Insert {
+                        variable: CallMember {
+                            from: Identifier("self"),
+                            call: Identifier("public")
+                        },
+                        expression: Infix(Multiply, CallMember { from: Identifier("self"), call: Identifier("public") }, Literal(I64(5)))
+                    })
+                ]
+            })
+        ]
+    },
+    Let {
+        variable: Variable("a", Class("Test")),
+        expression: Some(CallMember { from: Identifier("Test"), call: Call { function: Identifier("new"), arguments: [] } })
+    },
+    Expression(CallMember { from: Identifier("a"), call: Call { function: Identifier("add"), arguments: [] } })
 ]
