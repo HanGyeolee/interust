@@ -217,14 +217,14 @@ impl Compile for Statement {
                 let member_variables:Vec<&ClassMember> = cloned.iter().filter(|&x| {
                     match x {
                         ClassMember::Variable(_, _) => true,
-                        ClassMember::Method(_, _, _) => false,
+                        ClassMember::Method(_, _) => false,
                     }
                 }).collect();
                 let member_methods:Vec<&ClassMember> = cloned.iter().filter(|&x| {
                     match x {
                         ClassMember::Variable(_, _) => false,
-                        ClassMember::Method(is_public, is_static, _) =>
-                        is_public.clone() && !is_static.clone(),
+                        ClassMember::Method(access, _) =>
+                            access.is_public() && !access.is_static(),
                     }
                 }).collect();
                 compiler.emit_u16(member_variables.len() as u16);
@@ -365,32 +365,28 @@ impl Compile for Expression {
                     compiler.pop_scope();
                 }
             }
-            Expression::Call {function, arguments} => {
+            Expression::Call { identifier, arguments} => {
                 // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
                 compiler.emit(0x58);
-                if let Expression::Identifier(name) = function.as_ref() {
-                    let mut index = compiler.scope_index as i128;
-                    let mut not_found = true;
+                let mut index = compiler.scope_index as i128;
+                let mut not_found = true;
 
-                    while index > -1 {
-                        let addr_opt = {
-                            let (scope, _) = compiler.get_scope_mut(index as usize);
-                            scope.table.get(name).map(|(addr, _)| addr.clone())
-                        };
+                while index > -1 {
+                    let addr_opt = {
+                        let (scope, _) = compiler.get_scope_mut(index as usize);
+                        scope.table.get(identifier).map(|(addr, _)| addr.clone())
+                    };
 
-                        if let Some(addr) = addr_opt {
-                            compiler.emit_u16(addr as u16);
-                            not_found = false;
-                            break;
-                        } else {
-                            index -= 1;
-                        }
+                    if let Some(addr) = addr_opt {
+                        compiler.emit_u16(addr as u16);
+                        not_found = false;
+                        break;
+                    } else {
+                        index -= 1;
                     }
-                    if not_found {
-                        panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없습니다.", name));
-                    }
-                }else {
-                    panic!("컴파일 불가 : 잘못된 구문입니다.");
+                }
+                if not_found {
+                    panic!("{}", format!("컴파일 불가 : 해당하는 식별자({0})를 찾을 수 없습니다.", identifier.clone()));
                 }
                 let mut reverse = arguments.clone();
                 reverse.reverse();

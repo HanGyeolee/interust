@@ -1,6 +1,7 @@
+use std::ops::BitOrAssign;
 use crate::parser::error::{ParseError, ParseErrorKind};
 use crate::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Token, Type};
-use crate::ast::ClassMember;
+use crate::ast::{ClassMember, FieldAccess};
 
 pub struct Parser<'a> {
     tokens: &'a [Token],
@@ -236,7 +237,9 @@ impl<'a> Parser<'a> {
 
     fn parse_class_member(&mut self, class_name:String) -> Option<ClassMember> {
         let is_public = self.cur_token_is(&Token::Public);
+        let mut access = FieldAccess(0);
         if is_public {
+            access = FieldAccess::PUBLIC;
             self.consume_token();
         }
 
@@ -249,7 +252,7 @@ impl<'a> Parser<'a> {
 
                 self.consume_token();
                 if self.cur_token_is(&Token::Semicolon) {
-                    return Some(ClassMember::Variable(is_public, variable))
+                    return Some(ClassMember::Variable(access, variable))
                 } else {
                     return None;
                 }
@@ -260,7 +263,10 @@ impl<'a> Parser<'a> {
                     Some((is_static, param)) => (is_static, param),
                     None => return None,
                 };
-                return Some(ClassMember::Method(is_public, is_static, func))
+                if is_static {
+                    access |= FieldAccess::STATIC;
+                }
+                return Some(ClassMember::Method(access, func))
             }
             _ => None,
         }
@@ -787,10 +793,13 @@ impl<'a> Parser<'a> {
             None => return None,
         };
 
-        Some(Expression::Call {
-            function: Box::new(func),
-            arguments,
-        })
+        if let Expression::Identifier(identifier) = func {
+            return Some(Expression::Call {
+                identifier,
+                arguments,
+            })
+        }
+        None
     }
 
     fn parse_grouped_expression(&mut self) -> Option<Expression> {

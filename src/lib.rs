@@ -13,12 +13,12 @@
 //!
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::rc::Rc;
 use crate::complie::compiler::{Compiler, MAGIC_NUMBER};
-use crate::interpreter::environment::Environment;
 use interpreter::Interpreter;
 use crate::parser::parser::Parser;
 use crate::tokenizer::tokenizer::Tokenizer;
@@ -59,7 +59,7 @@ impl InterustCompiler {
     /// ```
     pub fn new() -> Self {
         InterustCompiler {
-            interpreter: Interpreter::new(Rc::new(RefCell::new(Environment::new()))),
+            interpreter: Interpreter::new(),
             compiler: Compiler::new(),
             program: Program::new()
         }
@@ -740,11 +740,7 @@ pub enum Object {
     I64(i64),
     Bool(bool),
     String(String),
-    FnDefine(Vec<Expression>, Vec<Statement>, Rc<RefCell<Environment>>, Type),
-    //TODO 함수는 모두 여기에 정리
-    ClassDefine(Vec<ClassMember>, Vec<ClassMember>, Rc<RefCell<Environment>>, Rc<RefCell<Environment>>), // 내부 environment 외부 environment
-    //TODO 객체는 변수만 가지도록
-    ClassInstance(String, Rc<RefCell<Environment>>), // 내부 env
+    Ref(usize),
     //LibraryFn(fn(Vec<Object>) -> Object),
     Null,
     ReturnValue(Box<Object>),
@@ -758,7 +754,8 @@ impl fmt::Display for Object {
             Object::I64(ref value) => write!(f, "{value}"),
             Object::Bool(ref value) => write!(f, "{value}"),
             Object::String(ref value) => write!(f, "{value}"),
-            Object::FnDefine(ref params, _, _, ref return_type) => {
+            Object::Ref(ref id) => write!(f, "Ref:{id}"),
+            /*Object::FnDefine(ref params, _, _, ref return_type) => {
                 let mut result = String::new();
 
                 for (i, s) in params.iter().enumerate() {
@@ -777,8 +774,8 @@ impl fmt::Display for Object {
                 }
 
                 write!(f, "fn({result}) -> {return_type} {{ ... }}")
-            }
-            Object::ClassDefine(ref variable_members, ref func_members, _, _) => {
+            }*/
+            /*Object::ClassDefine(ref variable_members, ref func_members, _, _) => {
                 let mut result = String::new();
 
                 for (i, s) in variable_members.iter().enumerate() {
@@ -818,8 +815,8 @@ impl fmt::Display for Object {
                     }
                 }
                 write!(f, "class{{ {result} }}")
-            },
-            Object::ClassInstance(ref class_name, _) => write!(f, "class instance {class_name}"),
+            },*/
+            //Object::ClassInstance(ref class_name, _) => write!(f, "class instance {class_name}"),
             //Object::LibraryFn(_) => write!(f, "LibraryFunction"),
             Object::Null => write!(f, "null"),
             Object::ReturnValue(ref value) => write!(f, "{value}"),
@@ -843,6 +840,9 @@ impl Object {
 
 /// # 인터프리터에서 활용할 추상 구문 트리(AST)
 pub mod ast {
+    use std::ops::{BitOr, BitOrAssign};
+    use crate::Object;
+
     /// AST 상수
     #[derive(Debug, PartialEq, Clone)]
     pub enum Literal {
@@ -895,6 +895,18 @@ pub mod ast {
         String           ,//=       0x7F,
         Class(String),    //=       0x80,
         Ref(Box<Type>),   //=       0x81,
+    }
+
+    impl Type {
+        pub fn default(&self) -> Object {
+            match self {
+                Type::F64 => Object::F64(0.0),
+                Type::I64 => Object::I64(0),
+                Type::String => Object::String(String::new()),
+                Type::Bool => Object::Bool(false),
+                _ => Object::Null,
+            }
+        }
     }
 
     impl std::fmt::Display for Type {
@@ -992,7 +1004,7 @@ pub mod ast {
             alternative: Option<Vec<Statement>>,
         },
         Call {                              // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
-            function: Box<Expression>,
+            identifier: String,
             arguments: Vec<Expression>,
         },
         CallMember {                        // 0x59
@@ -1027,11 +1039,42 @@ pub mod ast {
         Call,           // myFunction(X)
     }
 
+    /// AST 클래스 멤버 접근 권한
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct FieldAccess(pub u8);
+
+    impl FieldAccess {
+        pub const PRIVATE: FieldAccess = FieldAccess(0x00);
+        pub const PUBLIC: FieldAccess = FieldAccess(0x01);
+        pub const STATIC: FieldAccess = FieldAccess(0x10);
+
+        pub fn is_public(&self) -> bool {
+            self.0 & 0x01 != 0
+        }
+
+        pub fn is_static(&self) -> bool {
+            self.0 & 0x10 != 0
+        }
+    }
+
+    impl BitOr for FieldAccess {
+        type Output = Self;
+        fn bitor(self, rhs: Self) -> Self::Output {
+            FieldAccess(self.0 | rhs.0)
+        }
+    }
+
+    impl BitOrAssign for FieldAccess {
+        fn bitor_assign(&mut self, rhs: Self) {
+            self.0 = self.0 | rhs.0;
+        }
+    }
+
     /// AST 클래스 속 멤버
     #[derive(Debug, PartialEq, Clone)]
     pub enum ClassMember {
-        Variable(bool, Expression),         // pub, let
-        Method(bool, bool, Statement),      // pub, static, fn
+        Variable(FieldAccess, Expression),  // access, let
+        Method(FieldAccess, Statement),     // access, fn
     }
 }
 
