@@ -99,6 +99,13 @@ impl Interpreter {
     fn eval_statement(&mut self, statement: Statement) -> Option<Object> {
         match statement {
             Statement::Let{variable, expression} => {
+                let Expression::Variable(name, typ) = variable else {
+                    return Some(Object::Error(format!(
+                        "wrong expression: {:?} expected but {:?} given",
+                        Expression::Variable("".to_string(), Type::None),
+                        variable,
+                    )));
+                };
                 if let Some(init) = expression {
                     let value = self.eval_expression(init)
                         .unwrap_or_else(|| Object::Error(String::from("RuntimeError")));
@@ -106,25 +113,11 @@ impl Interpreter {
                     if is_error(&value) {
                         return Some(value);
                     } else {
-                        let Expression::Variable(name, typ) = variable else {
-                            return Some(Object::Error(format!(
-                                "wrong expression: {:?} expected but {:?} given",
-                                Expression::Variable("".to_string(), Type::None),
-                                variable,
-                            )));
-                        };
                         let cast = self.eval_cast(&typ, &value);
                         self.memory.set_variable(name, cast);
                     }
                 }
                 else {
-                    let Expression::Variable(name, typ) = variable else {
-                        return Some(Object::Error(format!(
-                            "wrong expression: {:?} expected but {:?} given",
-                            Expression::Variable("".to_string(), Type::None),
-                            variable,
-                        )));
-                    };
                     let value = match self.eval_expression(
                         Expression::Literal(Literal::None)
                     ) {

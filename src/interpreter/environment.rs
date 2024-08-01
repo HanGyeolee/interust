@@ -223,9 +223,9 @@ impl StackFrame {
 
 #[derive(Debug)]
 pub struct InterpreterMemory {
-    method_area: Rc<RefCell<MethodArea>>,
-    heap: Rc<RefCell<Heap>>,
-    stack: Rc<RefCell<StackFrame>>,
+    method_area: Rc<RefCell<MethodArea>>,   // class 정보, 전역 함수 정보
+    heap: Rc<RefCell<Heap>>,                // 인스턴스
+    stack: Rc<RefCell<StackFrame>>,         // 지역 변수, scope 형식
 }
 
 impl InterpreterMemory {
