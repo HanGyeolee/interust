@@ -64,7 +64,10 @@ impl<'a> Parser<'a> {
     }*/
 
     fn past_token_is(&mut self, token: &Token) -> bool {
-        token == self.past_token()
+        if self.position > 0 {
+            return token == self.past_token();
+        }
+        false
     }
 
     fn cur_token_is(&mut self, token: &Token) -> bool {
@@ -637,7 +640,7 @@ impl<'a> Parser<'a> {
 
         // class 초기화
         if let Some(Expression::Identifier(_)) = left.clone() {
-            if self.past_token_is(&Token::Return) {
+            if !self.past_token_is(&Token::Class) {
                 match self.future_token() {
                     Token::OpenBrace => {
                         self.consume_token();
