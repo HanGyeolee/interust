@@ -1,16 +1,4 @@
-use crate::Token;
-
-struct InterustLog {
-}
-
-impl InterustLog {
-    pub fn e(tag: &str, content: String){
-        eprintln!("{0} : {1}", tag, content);
-    }
-    /*pub fn i(tag: &str, content: String){
-        println!("{0} : {1}", tag, content);
-    }*/
-}
+use crate::{InterustLog, Token};
 
 pub struct Tokenizer<'a> {
     input: &'a str,
@@ -68,9 +56,22 @@ impl<'a> Tokenizer<'a>{
                 ']' => { tokens.push(Token::CloseBracket); self.advance(); }
                 ',' => { tokens.push(Token::Comma); self.advance(); }
                 ';' => { tokens.push(Token::Semicolon); self.advance(); }
-                ':' => { tokens.push(Token::Colon); self.advance(); }
+                ':' => {
+                    match self.future().unwrap() {
+                        ':' => {
+                            self.advance();
+                            tokens.push(Token::CallStaticMember); self.advance();
+                        },
+                        _ => {
+                            tokens.push(Token::Colon); self.advance();
+                        }
+                    };
+                }
                 '0'..='9' => tokens.push(self.read_number()),
                 '"' => tokens.push(self.read_string()),
+                '.' => {
+                    tokens.push(Token::CallMember); self.advance();
+                }
                 'a'..='z' | 'A'..='Z' | '_' => tokens.push(self.read_identifier()),
                 '/' => {
                     match self.future().unwrap() {
@@ -114,7 +115,15 @@ impl<'a> Tokenizer<'a>{
                 }
                 _ => {
                     if self.is_operator(current_char) {
-                        tokens.push(self.read_operator());
+                        let mut oper = self.read_operator();
+                        if let Token::Operator(s) = oper.clone(){
+                            if s.eq("&") {
+                                if let Some(Token::Identifier(_)) = tokens.last(){ } else {
+                                    oper = Token::Ampersand;
+                                }
+                            }
+                        }
+                        tokens.push(oper);
                     } else {
                         panic!("Unexpected character: {}", current_char);
                     }
@@ -215,6 +224,9 @@ impl<'a> Tokenizer<'a>{
             "while" => Token::While,
             "fn" => Token::Fn,
             "class" => Token::Class,
+            "pub" => Token::Public,
+            "self" => Token::SelfKeyword,
+
             "true" => Token::Bool(true),
             "True" => Token::Bool(true),
             "TRUE" => Token::Bool(true),
@@ -357,5 +369,31 @@ mod test {
             assert_eq!(tests[index], validates[index]);
             index = index + 1;
         }
+    }
+
+    #[test]
+    fn test_call_class_method() {
+        let input = r#"
+        class Test {
+            let private:i64;
+            pub let public:f64;
+            pub fn new() -> Test {
+                return Test {
+                    private: 0,
+                    public: 0
+                };
+            }
+
+            pub fn add(&self) {
+                self.public = self.public + 1;
+            }
+        }
+        let a = Test::new();
+        a.add();
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
     }
 }

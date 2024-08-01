@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use crate::complie::compile::{Compile, Compiling};
-use crate::{Constant, Expression, Program, Scope, Statement};
+use crate::{Constant, Program, Scope, Statement};
 
 #[derive(Debug)]
 pub struct Compiler;
@@ -24,12 +24,9 @@ impl Compiler {
         let removed = program.into_iter().filter(|x| {
             return match x {
                 Statement::Let {..} => true,
-                Statement::Return(_) => false,
-                Statement::Expression(x) =>
-                    match x {
-                        Expression::Fn {..} => true,
-                        _ => false
-                    }
+                Statement::Fn {..} => true,
+                Statement::Class {..} => true,
+                _ => false,
             };
         }).collect();
         let compiling:Compiling = self.compile(removed);
@@ -91,11 +88,11 @@ impl Compiler {
 
     fn write_scope_info(&self, binary: &mut Vec<u8>, scope: &Scope) {
         binary.write_all(&(scope.table.len() as u16).to_le_bytes()).expect("식별자 개수 작성 실패");
-        for (name, (addr, typ)) in &scope.table {
+        for (name, (addr, _)) in &scope.table {
             binary.write_all(&(name.len() as u8).to_le_bytes()).expect("식별자 문자열 크기 작성 실패");
             binary.write_all(name.as_bytes()).expect("식별자 문자열 작성 실패");
             binary.write_all(&(*addr as u16).to_le_bytes()).expect("식별자 주소 작성 실패");
-            binary.write_all(&[typ.clone() as u8]).expect("식별자 타입 작성 실패");
+            //binary.write_all(typ).expect("식별자 타입 작성 실패");
         }
     }
 }

@@ -11,20 +11,24 @@
 //! - *bool* ( *Bool* | *boolean* ) : 1bit 논리값 = ``[true, True, TRUE, false, ...]``
 //! - *str* ( *String* ) : 문자열 = 길이 제한 `usize`의 최대값 > Rust에서 `&str`이 아닌 `String`으로 변수 저장
 //!
+//! # 클래스 선언 지원
+//!
+//! 직접 class 를 선언할 수 있습니다.<br/>
+//! public 과 private 그리고 static 을 구분합니다.
+//! - static function : {Class_Name}::{Function_Name}() 으로 호출합니다.
+//! - public variable : {Class_Variable_Name}.{Public_Variable_Name} 으로 호출합니다.
+//! - private variable : 외부에서 호출할 수 없으나, 내부에서는 self.{Private_Variable_Name} 으로 호출 가능합니다.
 
-use std::cell::RefCell;
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
-use std::rc::Rc;
 use crate::complie::compiler::{Compiler, MAGIC_NUMBER};
-use crate::interpreter::environment::Environment;
 use interpreter::Interpreter;
-use std::fmt;
-use crate::ast::*;
 use crate::parser::parser::Parser;
 use crate::tokenizer::tokenizer::Tokenizer;
 use crate::virtualmachine::BytecodeEngine;
-use crate::vm::*;
+use crate::ast::*;
+use crate::script::*;
 
 mod tokenizer;
 mod parser;
@@ -59,7 +63,7 @@ impl InterustCompiler {
     /// ```
     pub fn new() -> Self {
         InterustCompiler {
-            interpreter: Interpreter::new(Rc::new(RefCell::new(Environment::new()))),
+            interpreter: Interpreter::new(),
             compiler: Compiler::new(),
             program: Program::new()
         }
@@ -290,29 +294,29 @@ impl InterustCompiler {
     }
 }
 
-/// # 가상 머신
+/// # 인터프리터 스크립트 엔진
 /// 컴파일된 파일 실행하고, 외부에서 함수 및 변수를 호출 가능합니다.
-pub struct InterustVM {
+pub struct InterustScript {
     bytecode_engine:BytecodeEngine,
 }
 
-impl InterustVM{
-    /// 가상 머신을 생성합니다.
+impl InterustScript {
+    /// 인터프리터 스크립트 엔진을 생성합니다.
     ///
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustVM;
+    /// use interust::InterustScript;
     ///
-    /// let mut interust_vm = InterustVM::new();
+    /// let mut interust_vm = InterustScript::new();
     /// ```
     pub fn new() -> Self {
-        InterustVM {
+        InterustScript {
             bytecode_engine: BytecodeEngine::new(),
         }
     }
 
-    /// 가상 머신에서 컴파일된 파일을 읽고 상수와 바이트 코드,
+    /// 인터프리터 스크립트 엔진에서 컴파일된 파일을 읽고 상수와 바이트 코드,
     /// 외부에서 참조할 수 있는 전역 변수 및 전역 함수를 설정합니다.
     ///
     /// # 매개변수
@@ -322,9 +326,9 @@ impl InterustVM{
     /// # 예제
     ///
     /// ```
-    /// use interust::InterustVM;
+    /// use interust::InterustScript;
     ///
-    /// let mut interust_vm = InterustVM::new();
+    /// let mut interust_vm = InterustScript::new();
     /// interust_vm.import_compiled("test.irs");
     /// ```
     pub fn import_compiled(&mut self, file_path:&str) {
@@ -351,15 +355,15 @@ impl InterustVM{
         println!("{}", log);
     }
 
-    /// 외부에서 가상 머신 내에 존재하는 함수를 호출합니다.<br/>
-    /// 함수는 가상 머신 내에서 동작하며 반환값이 없는 경우 None을 반환합니다.<br/>
+    /// 외부에서 인터프리터 스크립트 엔진 내에 존재하는 함수를 호출합니다.<br/>
+    /// 함수는 인터프리터 스크립트 엔진 내에서 동작하며 반환값이 없는 경우 None을 반환합니다.<br/>
     /// 연산 중 오류가 발생하거나 함수를 찾을 수 없으면, VMObject::Error() 를 반환합니다.
     /// # 매개변수
     /// - `name` : `String` 타입, 호출할 함수 식별자<br/>
     /// - `params` : `Vec<VMObejct>` 타입, 함수에 전달될 매개변수들<br/>
     /// # 예제
     /// ```
-    /// use interust::{InterustCompiler, InterustVM};
+    /// use interust::{InterustCompiler, InterustScript};
     ///
     /// let mut interust_compiler = InterustCompiler::new();
     /// interust_compiler.export_from_str("test_export", r#"
@@ -369,7 +373,7 @@ impl InterustVM{
     ///     }
     /// "#);
     ///
-    /// let mut interust_vm = InterustVM::new();
+    /// let mut interust_vm = InterustScript::new();
     /// interust_vm.import_compiled("test_export.irs");
     /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
     /// // count:1
@@ -377,17 +381,17 @@ impl InterustVM{
     /// // count:2
     /// assert_eq!(return_value, None);
     /// ```
-    pub fn call_compiled_fn(&mut self, name:String, params: Vec<VMObejct>) -> Option<VMObejct> {
+    pub fn call_compiled_fn(&mut self, name:String, params: Vec<ScriptObejct>) -> Option<ScriptObejct> {
         self.bytecode_engine.call_function(name, params)
     }
-    /// 외부에서 가상 머신 내에 존재하는 변수를 호출합니다.<br/>
+    /// 외부에서 인터프리터 스크립트 엔진 내에 존재하는 변수를 호출합니다.<br/>
     /// 변수를 찾을 수 없으면, VMObject::Error() 를 반환합니다.
     /// # 매개변수
     /// - `name` : `String` 타입, 호출할 변수 식별자<br/>
     /// # 예제
     /// ```
-    /// use interust::{InterustCompiler, InterustVM};
-    /// use interust::VMObejct;
+    /// use interust::{InterustCompiler, InterustScript};
+    /// use interust::ScriptObejct;
     ///
     /// let mut interust_compiler = InterustCompiler::new();
     /// interust_compiler.export_from_str("test_export", r#"
@@ -397,25 +401,25 @@ impl InterustVM{
     ///     }
     /// "#);
     ///
-    /// let mut interust_vm = InterustVM::new();
+    /// let mut interust_vm = InterustScript::new();
     /// interust_vm.import_compiled("test_export.irs");
     /// let return_value = interust_vm.call_compiled_fn(String::from("add"), vec![]);
     /// // count:1
     /// let value = interust_vm.call_compiled_var(String::from("count"));
-    /// assert_eq!(value, VMObejct::I64(1));
+    /// assert_eq!(value, ScriptObejct::I64(1));
     /// ```
-    pub fn call_compiled_var(&mut self, name:String) -> VMObejct {
+    pub fn call_compiled_var(&mut self, name:String) -> ScriptObejct {
         self.bytecode_engine.call_variable(name)
     }
 
-    /// 가상 머신 내 상수와 식별자들을 출력합니다.<br/>
+    /// 인터프리터 스크립트 엔진 내 상수와 식별자들을 출력합니다.<br/>
     /// 식별자에 대해 `call_compiled_var()` 을 통해서 접근합니다.
     ///
     /// # 예제
     ///
     /// ```
-    ///  use interust::{InterustCompiler, InterustVM};
-    /// use interust::VMObejct;
+    ///  use interust::{InterustCompiler, InterustScript};
+    /// use interust::ScriptObejct;
     ///
     /// let mut interust_compiler = InterustCompiler::new();
     /// interust_compiler.export_from_str("test_export", r#"
@@ -425,7 +429,7 @@ impl InterustVM{
     ///     }
     /// "#);
     ///
-    /// let mut interust_vm = InterustVM::new();
+    /// let mut interust_vm = InterustScript::new();
     /// interust_vm.import_compiled("test_export.irs");
     /// interust_vm.call_compiled_fn(String::from("add"), vec![]);
     /// // count:1
@@ -435,51 +439,51 @@ impl InterustVM{
         self.bytecode_engine.print();
     }
 
-    fn read_constant_pool(&self, file: &Vec<u8>, index: usize) -> (Vec<VMObejct>, usize) {
-        let size = std::mem::size_of::<u16>();
-        let mut array = [0u8; std::mem::size_of::<u16>()];
+    fn read_constant_pool(&self, file: &Vec<u8>, index: usize) -> (Vec<ScriptObejct>, usize) {
+        let size = size_of::<u16>();
+        let mut array = [0u8; size_of::<u16>()];
         array.copy_from_slice(&file[index..index + size]);
         let length = u16::from_le_bytes(array);
         let mut index = index + size;
-        let mut constant_pool:Vec<VMObejct> = Vec::new();
+        let mut constant_pool:Vec<ScriptObejct> = Vec::new();
         for _ in 0..length {
             match file[index] {
                 0x01 => {
                     index += 1;
-                    constant_pool.push(VMObejct::Null);
+                    constant_pool.push(ScriptObejct::Null);
                 },
                 0x02 => {
                     index += 1;
-                    let length = std::mem::size_of::<i64>();
-                    let mut array = [0u8; std::mem::size_of::<i64>()];
+                    let length = size_of::<i64>();
+                    let mut array = [0u8; size_of::<i64>()];
                     array.copy_from_slice(&file[index..index + length]);
                     let value = i64::from_le_bytes(array);
-                    constant_pool.push(VMObejct::I64(value));
+                    constant_pool.push(ScriptObejct::I64(value));
                     index += length;
                 },
                 0x03 => {
                     index += 1;
-                    let length = std::mem::size_of::<f64>();
-                    let mut array = [0u8; std::mem::size_of::<f64>()];
+                    let length = size_of::<f64>();
+                    let mut array = [0u8; size_of::<f64>()];
                     array.copy_from_slice(&file[index..index + length]);
                     let value = f64::from_le_bytes(array);
-                    constant_pool.push(VMObejct::F64(value));
+                    constant_pool.push(ScriptObejct::F64(value));
                     index += length;
                 },
                 0x0C => {
                     index += 1;
-                    constant_pool.push(VMObejct::Bool(file[index] == 1));
+                    constant_pool.push(ScriptObejct::Bool(file[index] == 1));
                     index += 1;
                 },
                 0x0F => {
                     index += 1;
-                    let length = std::mem::size_of::<u32>();
-                    let mut array = [0u8; std::mem::size_of::<u32>()];
+                    let length = size_of::<u32>();
+                    let mut array = [0u8; size_of::<u32>()];
                     array.copy_from_slice(&file[index..index + length]);
                     let string_length = u32::from_le_bytes(array) as usize;
                     index += length;
                     if let Ok(import_magic) = String::from_utf8(file[index..index + string_length].to_vec()) {
-                        constant_pool.push(VMObejct::String(import_magic));
+                        constant_pool.push(ScriptObejct::String(import_magic));
                     }
                     index += string_length;
                 },
@@ -496,8 +500,8 @@ impl InterustVM{
     }
 
     fn read_scope_info(&self, file:&Vec<u8>, index: usize) -> Scope {
-        let size = std::mem::size_of::<u16>();
-        let mut array = [0u8; std::mem::size_of::<u16>()];
+        let size = size_of::<u16>();
+        let mut array = [0u8; size_of::<u16>()];
         array.copy_from_slice(&file[index..index + size]);
         let identifier_count = u16::from_le_bytes(array);
         let mut index = index + size;
@@ -507,8 +511,8 @@ impl InterustVM{
             index += 1;
             if let Ok(name) = String::from_utf8(file[index..index + string_length].to_vec()) {
                 index += string_length;
-                let size = std::mem::size_of::<u16>();
-                let mut array = [0u8; std::mem::size_of::<u16>()];
+                let size = size_of::<u16>();
+                let mut array = [0u8; size_of::<u16>()];
                 array.copy_from_slice(&file[index..index + size]);
                 let addr = u16::from_le_bytes(array);
                 index += size;
@@ -538,8 +542,8 @@ impl InterustVM{
     }
 
     fn import_usize(&self, file: &Vec<u8>, index: usize) -> (usize, usize) {
-        let size = std::mem::size_of::<usize>();
-        let mut array = [0u8; std::mem::size_of::<usize>()];
+        let size = size_of::<usize>();
+        let mut array = [0u8; size_of::<usize>()];
         array.copy_from_slice(&file[index..index + size]);
         (usize::from_le_bytes(array), index + size)
     }
@@ -548,7 +552,7 @@ impl InterustVM{
 #[cfg(test)]
 mod test {
     use std::time::{Duration, Instant};
-    use crate::{InterustCompiler, InterustVM};
+    use crate::{InterustCompiler, InterustScript};
     use crate::Object;
 
     #[test]
@@ -577,7 +581,7 @@ mod test {
             let result = add(a);
         "#);
 
-        let mut interust_vm = InterustVM::new();
+        let mut interust_vm = InterustScript::new();
         interust_vm.import_compiled("test_export.irs");
     }
 
@@ -592,7 +596,7 @@ mod test {
             }
         "#);
 
-        let mut interust_vm = InterustVM::new();
+        let mut interust_vm = InterustScript::new();
         interust_vm.import_compiled("test_export.irs");
 
         interust_vm.bytecode_engine.print();
@@ -620,7 +624,7 @@ mod test {
                 }
             "#);
 
-        let mut interust_vm = InterustVM::new();
+        let mut interust_vm = InterustScript::new();
         interust_vm.import_compiled("test_export.irs");
 
         for _ in 0..iterator {
@@ -641,56 +645,9 @@ mod test {
     }
 }
 
-/*
-// [dependencies]
-// winapi = { version = "0.3.9", features = ["consoleapi"] }
-#[cfg(test)]
-mod test {
-    use std::{io, process, thread};
-    use std::io::Write;
-    use std::time::Duration;
-    use winapi::um::consoleapi::SetConsoleCtrlHandler;
-    use crate::InterustEngine;
-
-    unsafe extern "system" fn ctrl_handler(_: u32) -> i32 {
-        io::stdout().write("exit".as_bytes()).expect("");
-        process::exit(0); // 프로그램을 종료하고 종료 코드 0으로 반환
-    }
-
-    fn main() {
-
-        // Ctrl+C 신호를 처리하기 위한 플래그
-        unsafe {
-            SetConsoleCtrlHandler(Some(ctrl_handler), 1);
-        }
-
-        let mut interust = InterustEngine::new();
-        // 사용자 입력을 받는 루프
-        loop {
-            print!("> ");
-            io::stdout().flush().unwrap();
-            let mut input = String::new();
-            match io::stdin().read_line(&mut input) {
-                Ok(_) => {
-                    if let Some(result) = interust.run(input.as_str()){
-                        println!("anv : {0}", result);
-                    }
-                }
-                Err(_) => {}
-            }
-
-            // 잠시 대기 (optional: 너무 빠른 루프 방지)
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        println!("Program terminated.");
-    }
-}
-*/
-
 pub type Program = Vec<Statement>;
 
-/// 인터프리터 해석기에서 토크나이징할 때 사용할 토큰들
+/// 해석기에서 토크나이징할 때 사용할 토큰들
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token {
     Let,                    // let 변수 생성
@@ -699,9 +656,11 @@ pub enum Token {
     Return,                 // return
     ReturnType,             // return type
     For,                    // for
-    While,                  // while            미구현
+    While,                  // while
     Fn,                     // function
-    Class,                  // class            미구현
+    Class,                  // class
+    Public,                 // pub
+    SelfKeyword,            // self
 
     Identifier(String),     // 식별자
     F64(f64),               // 실수 숫자
@@ -719,23 +678,26 @@ pub enum Token {
     CloseBracket,           // ]
 
     Assign,                 // =
+    Ampersand,              // &
 
+    CallMember,             // .
     Comma,                  // ,
     Colon,                  // :
+    CallStaticMember,       // ::
     Semicolon,              // ;
 
     Comment,                // /* */
     EOF,                    // 종료
 }
 
-/// 인터프리터 해석기에서 프로그램을 실행할 때 사용할 객체들
+/// 해석기에서 프로그램을 실행할 때 사용할 객체들
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
     F64(f64),
     I64(i64),
     Bool(bool),
     String(String),
-    Fn(Vec<Expression>, Vec<Statement>, Rc<RefCell<Environment>>, Type),
+    Ref(usize),
     //LibraryFn(fn(Vec<Object>) -> Object),
     Null,
     ReturnValue(Box<Object>),
@@ -745,19 +707,20 @@ pub enum Object {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Object::F64(ref value) => write!(f, "{value}"),
-            Object::I64(ref value) => write!(f, "{value}"),
+            Object::F64(ref value) => write!(f, "{value}f64"),
+            Object::I64(ref value) => write!(f, "{value}i64"),
             Object::Bool(ref value) => write!(f, "{value}"),
             Object::String(ref value) => write!(f, "{value}"),
-            Object::Fn(ref params, _, _, ref return_type) => {
+            Object::Ref(ref id) => write!(f, "Ref:{id}"),
+            /*Object::FnDefine(ref params, _, _, ref return_type) => {
                 let mut result = String::new();
 
                 for (i, s) in params.iter().enumerate() {
                     let Expression::Variable(name, _) = s else {
                         return write!(f,
-                            "wrong expression: {:?} expected but {:?} given",
-                            Expression::Variable("".to_string(), Type::None),
-                            s,
+                                      "wrong expression: {:?} expected but {:?} given",
+                                      Expression::Variable("".to_string(), Type::None),
+                                      s,
                         );
                     };
                     if i < 1 {
@@ -768,11 +731,53 @@ impl fmt::Display for Object {
                 }
 
                 write!(f, "fn({result}) -> {return_type} {{ ... }}")
-            }
+            }*/
+            /*Object::ClassDefine(ref variable_members, ref func_members, _, _) => {
+                let mut result = String::new();
+
+                for (i, s) in variable_members.iter().enumerate() {
+                    match s {
+                        ClassMember::Variable(is_pub, var) => {
+                            let mut is_public = "";
+                            if *is_pub {
+                                is_public = "pub "
+                            }
+                            if i < 1 {
+                                result.push_str(&format!("{is_public}let {:?}",var));
+                            } else {
+                                result.push_str(&format!(", {is_public}let {:?}",var));
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+                for (i, s) in func_members.iter().enumerate() {
+                    match s {
+                        ClassMember::Method(is_pub , is_sta, _) => {
+                            let mut is_public = "";
+                            if *is_pub {
+                                is_public = "pub "
+                            }
+                            let mut is_static = "";
+                            if *is_sta {
+                                is_static = "&self, "
+                            }
+                            if i < 1 {
+                                result.push_str(&format!("{is_public}fn({is_static} ... )"));
+                            } else {
+                                result.push_str(&format!(", {is_public}fn({is_static} ... )"));
+                            }
+                        },
+                        _ => {}
+                    }
+                }
+                write!(f, "class{{ {result} }}")
+            },*/
+            //Object::ClassInstance(ref class_name, _) => write!(f, "class instance {class_name}"),
             //Object::LibraryFn(_) => write!(f, "LibraryFunction"),
             Object::Null => write!(f, "null"),
             Object::ReturnValue(ref value) => write!(f, "{value}"),
-            Object::Error(ref value) => write!(f, "{value}"),
+            Object::Error(ref value) => write!(f, "Error:{value}"),
         }
     }
 }
@@ -792,6 +797,9 @@ impl Object {
 
 /// # 인터프리터에서 활용할 추상 구문 트리(AST)
 pub mod ast {
+    use std::ops::{BitOr, BitOrAssign};
+    use crate::Object;
+
     /// AST 상수
     #[derive(Debug, PartialEq, Clone)]
     pub enum Literal {
@@ -825,25 +833,37 @@ pub mod ast {
     }
 
     /// AST 타입
-    #[allow(non_camel_case_types)]
-    #[repr(u8)]
-    #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+    #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
     pub enum Type {
-        None        =       0x71,
-        I64         =       0x72,
-        F64         =       0x73,
-        //u64       =       0x74,
-        //i32       =       0x75,
-        //f32       =       0x76,
-        //u32       =       0x77,
-        //i16       =       0x78,
-        //u16       =       0x79,
-        //i8        =       0x7A,
-        //u8        =       0x7B,
-        Bool        =       0x7C,
-        //Vec       =       0x7D,
-        //Map       =       0x7E,
-        String      =       0x7F,
+        None             ,//=       0x71,
+        I64              ,//=       0x72,
+        F64              ,//=       0x73,
+        //u64            ,//=       0x74,
+        //i32            ,//=       0x75,
+        //f32            ,//=       0x76,
+        //u32            ,//=       0x77,
+        //i16            ,//=       0x78,
+        //u16            ,//=       0x79,
+        //i8             ,//=       0x7A,
+        //u8             ,//=       0x7B,
+        Bool             ,//=       0x7C,
+        //Vec(Type)      ,//=       0x7D,
+        //Map            ,//=       0x7E,
+        String           ,//=       0x7F,
+        Class(String),    //=       0x80,
+        Ref(Box<Type>),   //=       0x81,
+    }
+
+    impl Type {
+        pub fn default(&self) -> Object {
+            match self {
+                Type::F64 => Object::F64(0.0),
+                Type::I64 => Object::I64(0),
+                Type::String => Object::String(String::new()),
+                Type::Bool => Object::Bool(false),
+                _ => Object::Null,
+            }
+        }
     }
 
     impl std::fmt::Display for Type {
@@ -854,6 +874,8 @@ pub mod ast {
                 Type::String => write!(f, "string"),
                 Type::Bool => write!(f, "bool"),
                 Type::None => write!(f, "var"),
+                Type::Class(_) => write!(f, "class"),
+                Type::Ref(_) => write!(f, "ref"),
             }
         }
     }
@@ -906,39 +928,54 @@ pub mod ast {
     /// AST 상태
     #[derive(Debug, PartialEq, Clone)]
     pub enum Statement {
-        Let{                                // 0x50 from to[0x52 addr type]
-        variable: Expression,
+        Let{                                // 0x50 from to[0x54 addr type]
+            variable: Expression,
             expression: Option<Expression>
         },
-        Return(Expression),                 // 0x51 exp
+        Fn {                                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+            identifier: String,
+            return_type: Type,
+            parameters: Vec<Expression>,
+            body: Vec<Statement>,
+        },
+        Class {                             // 0x52
+            identifier: String,
+            members: Vec<ClassMember>
+        },
+        Return(Expression),                 // 0x53 exp
         Expression(Expression),
     }
 
     /// AST 구문
     #[derive(Debug, PartialEq, Clone)]
     pub enum Expression {
-        Variable(String, Type),             // 0x52 type
-        Identifier(String),                 // 변수 로드 = 0x53 addr
-        Insert {                            // 0x54 from to
-        variable:  Box<Expression>,
+        Variable(String, Type),             // 0x54 type
+        Identifier(String),                 // 변수 로드 = 0x55 addr
+        Insert {                            // 0x56 from to
+            variable:  Box<Expression>,
             expression: Box<Expression>
         },
-        If {                                // 0x55 cond cons_length alter_length cons (alter)
-        condition: Box<Expression>,
+        If {                                // 0x57 cond cons_length alter_length cons (alter)
+            condition: Box<Expression>,
             consequence: Vec<Statement>,
             alternative: Option<Vec<Statement>>,
         },
-        Fn {                                // 0x56 return params_length body_size params[0x52 addr type, 0x52 addr type, ...] body
-        identifier: String,
-            return_type: Type,
-            parameters: Vec<Expression>,
-            body: Vec<Statement>,
-        },
-        Call {                              // 0x57 addr args_length args[0x53 index, 0x53 index, ...]
-        function: Box<Expression>,
+        Call {                              // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
+            identifier: String,
             arguments: Vec<Expression>,
         },
-
+        CallMember {                        // 0x59
+            identifier: String,
+            call: Box<Expression>,
+        },
+        CallStaticMember {                  // 0x60
+            identifier: String,
+            call: Box<Expression>,
+        },
+        ClassInstance {                     // 0x61
+            identifier: String,
+            inits: Vec<Expression>
+        },
         Literal(Literal),
         Prefix(Prefix, Box<Expression>),
         Infix(
@@ -949,7 +986,7 @@ pub mod ast {
     }
 
     /// AST 우선순위
-    #[derive(PartialEq, PartialOrd)]
+    #[derive(PartialEq, PartialOrd, Clone)]
     pub enum Precedence {
         Lowest,
         Assign,         // =
@@ -963,17 +1000,54 @@ pub mod ast {
         Call,           // myFunction(X)
     }
 
+    /// AST 클래스 멤버 접근 권한
+    #[derive(Debug, Clone, Copy, PartialEq)]
+    pub struct FieldAccess(pub u8);
+
+    impl FieldAccess {
+        pub const PRIVATE: FieldAccess = FieldAccess(0x00);
+        pub const PUBLIC: FieldAccess = FieldAccess(0x01);
+        pub const STATIC: FieldAccess = FieldAccess(0x10);
+
+        pub fn is_public(&self) -> bool {
+            self.0 & 0x01 != 0
+        }
+
+        pub fn is_static(&self) -> bool {
+            self.0 & 0x10 != 0
+        }
+    }
+
+    impl BitOr for FieldAccess {
+        type Output = Self;
+        fn bitor(self, rhs: Self) -> Self::Output {
+            FieldAccess(self.0 | rhs.0)
+        }
+    }
+
+    impl BitOrAssign for FieldAccess {
+        fn bitor_assign(&mut self, rhs: Self) {
+            self.0 = self.0 | rhs.0;
+        }
+    }
+
+    /// AST 클래스 속 멤버
+    #[derive(Debug, PartialEq, Clone)]
+    pub enum ClassMember {
+        Variable(FieldAccess, Expression),  // access, let
+        Method(FieldAccess, Statement),     // access, fn
+    }
 }
 
-/// # 가상 머신에서 활용할 열거자 및 테이블
-pub mod vm {
+/// # 인터프리터 스크립트 엔진에서 활용할 열거자 및 테이블
+pub mod script {
     use std::fmt;
     use rustc_hash::FxHashMap;
     use crate::ast::Type;
 
-    /// 가상 머신 객체
+    /// 인터프리터 스크립트 엔진 객체
     #[derive(Debug, PartialEq, Clone)]
-    pub enum VMObejct {
+    pub enum ScriptObejct {
         Null,
         I64(i64),
         F64(f64),
@@ -983,22 +1057,22 @@ pub mod vm {
         Error(String)
     }
 
-    impl fmt::Display for VMObejct {
+    impl fmt::Display for ScriptObejct {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             match *self {
-                VMObejct::F64(ref value) => write!(f, "{value}"),
-                VMObejct::I64(ref value) => write!(f, "{value}"),
-                VMObejct::Bool(ref value) => write!(f, "{value}"),
-                VMObejct::String(ref value) => write!(f, "{value}"),
-                VMObejct::Fn(ref addr, ref params_count, ref body_size) =>
+                ScriptObejct::F64(ref value) => write!(f, "{value}"),
+                ScriptObejct::I64(ref value) => write!(f, "{value}"),
+                ScriptObejct::Bool(ref value) => write!(f, "{value}"),
+                ScriptObejct::String(ref value) => write!(f, "{value}"),
+                ScriptObejct::Fn(ref addr, ref params_count, ref body_size) =>
                     write!(f, "fn {addr}:({params_count}) {{{body_size}}}"),
-                VMObejct::Null => write!(f, "null"),
-                VMObejct::Error(ref value) => write!(f, "{value}"),
+                ScriptObejct::Null => write!(f, "null"),
+                ScriptObejct::Error(ref value) => write!(f, "{value}"),
             }
         }
     }
 
-    /// 가상 머신 상수
+    /// 인터프리터 스크립트 엔진 상수
     #[derive(Debug, PartialEq, Clone)]
     pub enum Constant {
         None,                   // 0x01
@@ -1018,7 +1092,7 @@ pub mod vm {
         String(String),         // 0x0F
     }
 
-    /// 가상 머신 테이블
+    /// 인터프리터 스크립트 엔진 테이블
     #[derive(Debug, PartialEq, Clone)]
     pub struct Scope {
         /// 변수 혹은 함수 식별자를 담는 테이블: 식별자 이름, (주소, 타입)
@@ -1033,3 +1107,61 @@ pub mod vm {
         }
     }
 }
+
+struct InterustLog {
+}
+
+impl InterustLog {
+    pub fn e(tag: &str, content: String){
+        eprintln!("{0} : {1}", tag, content);
+    }
+    /*pub fn i(tag: &str, content: String){
+        println!("{0} : {1}", tag, content);
+    }*/
+}
+
+/*
+// [dependencies]
+// winapi = { version = "0.3.9", features = ["consoleapi"] }
+#[cfg(test)]
+mod test {
+    use std::{io, process, thread};
+    use std::io::Write;
+    use std::time::Duration;
+    use winapi::um::consoleapi::SetConsoleCtrlHandler;
+    use crate::InterustEngine;
+
+    unsafe extern "system" fn ctrl_handler(_: u32) -> i32 {
+        io::stdout().write("exit".as_bytes()).expect("");
+        process::exit(0); // 프로그램을 종료하고 종료 코드 0으로 반환
+    }
+
+    fn main() {
+
+        // Ctrl+C 신호를 처리하기 위한 플래그
+        unsafe {
+            SetConsoleCtrlHandler(Some(ctrl_handler), 1);
+        }
+
+        let mut interust = InterustEngine::new();
+        // 사용자 입력을 받는 루프
+        loop {
+            print!("> ");
+            io::stdout().flush().unwrap();
+            let mut input = String::new();
+            match io::stdin().read_line(&mut input) {
+                Ok(_) => {
+                    if let Some(result) = interust.run(input.as_str()){
+                        println!("anv : {0}", result);
+                    }
+                }
+                Err(_) => {}
+            }
+
+            // 잠시 대기 (optional: 너무 빠른 루프 방지)
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        println!("Program terminated.");
+    }
+}*/

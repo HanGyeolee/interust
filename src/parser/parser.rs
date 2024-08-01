@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use crate::parser::error::{ParseError, ParseErrorKind};
 use crate::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Token, Type};
+use crate::ast::{ClassMember, FieldAccess};
 
 pub struct Parser<'a> {
     tokens: &'a [Token],
@@ -14,6 +16,11 @@ impl<'a> Parser<'a> {
             position: 0,
             errors: Vec::new(),
         }
+    }
+
+    // past_token
+    fn past_token(&self) -> &Token {
+        &self.tokens[self.position - 1]
     }
 
     // cur_token
@@ -47,7 +54,7 @@ impl<'a> Parser<'a> {
                     _ => Precedence::Lowest
                 }
             }
-            Token::OpenParen => Precedence::Call,
+            Token::OpenParen | Token::CallStaticMember | Token::CallMember => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }
@@ -55,6 +62,10 @@ impl<'a> Parser<'a> {
     /*pub fn get_errors(&mut self) -> Vec<ParseError> {
         self.errors.clone()
     }*/
+
+    fn past_token_is(&mut self, token: &Token) -> bool {
+        token == self.past_token()
+    }
 
     fn cur_token_is(&mut self, token: &Token) -> bool {
         token == self.current_token()
@@ -113,12 +124,26 @@ impl<'a> Parser<'a> {
             self.consume_token();
         }
 
+        program.sort_by(|a, b| {
+            match (a, b) {
+                (Statement::Class { .. }, Statement::Class { .. }) => Ordering::Equal,
+                (Statement::Class { .. }, _) => Ordering::Less,
+                (_, Statement::Class { .. }) => Ordering::Greater,
+                (Statement::Fn { .. }, Statement::Fn { .. }) => Ordering::Equal,
+                (Statement::Fn { .. }, _) => Ordering::Less,
+                (_, Statement::Fn { .. }) => Ordering::Greater,
+                _ => Ordering::Equal,
+            }
+        });
+
         program
     }
 
     fn parse_statement(&mut self) -> Option<Statement> {
         match self.current_token() {
             Token::Let => self.parse_let_statement(),
+            Token::Fn => self.parse_function_statement(),
+            Token::Class => self.parse_class_statement(),
             Token::Return => self.parse_return_statement(),
             _ => self.parse_expression_statement(),
         }
@@ -143,18 +168,322 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_type(&mut self) -> Option<Type>{
+        let mut reffed = false;
         self.consume_token(); // :
+        if self.peek_token_is(&Token::Ampersand){
+            reffed = true;
+        }
         match self.parse_identifier() {
             Some(identifier) =>
                 Some(match identifier.as_str() {
-                    "i64" => Type::I64,
-                    "f64" => Type::F64,
-                    "String" | "str" => Type::String,
-                    "bool" | "Bool" | "boolean" => Type::Bool,
-                    _ => return None
+                    "i64" => {
+                        if reffed {
+                            Type::Ref(Box::from(Type::I64))
+                        } else {
+                            Type::I64
+                        }
+                    },
+                    "f64" => {
+                        if reffed {
+                            Type::Ref(Box::from(Type::F64))
+                        } else {
+                            Type::F64
+                        }
+                    },
+                    "String" | "str" => {
+                        if reffed {
+                            Type::Ref(Box::from(Type::String))
+                        } else {
+                            Type::String
+                        }
+                    },
+                    "bool" | "Bool" | "boolean" => {
+                        if reffed {
+                            Type::Ref(Box::from(Type::Bool))
+                        } else {
+                            Type::Bool
+                        }
+                    },
+                    name => Type::Class(String::from(name))
                 }),
             None => return None,
         }
+    }
+
+    fn parse_class_statement(&mut self) -> Option<Statement> {
+        self.consume_token(); // 'class' 토큰 소비
+        let identifier = match self.parse_identifier() {
+            Some(name) => name,
+            None => return None,
+        };
+
+        if !self.expect_peek(&Token::OpenBrace) {
+            return None;
+        }
+        self.consume_token();
+
+        let members = self.parse_class_members(identifier.clone());
+
+        if !self.expect_peek(&Token::CloseBrace) {
+            return None;
+        }
+
+        Some(Statement::Class{
+            identifier, members
+        })
+    }
+
+    fn parse_class_members(&mut self, identifier:String) -> Vec<ClassMember> {
+        let mut members = Vec::new();
+
+        while !self.peek_token_is(&Token::CloseBrace) {
+            if let Some(member) = self.parse_class_member(identifier.clone()) {
+                members.push(member);
+            }else {
+                self.consume_token();
+            }
+        }
+
+        members
+    }
+
+    fn parse_class_member(&mut self, class_name:String) -> Option<ClassMember> {
+        let is_public = self.cur_token_is(&Token::Public);
+        let mut access = FieldAccess(0);
+        if is_public {
+            access = FieldAccess::PUBLIC;
+            self.consume_token();
+        }
+
+        match self.current_token() {
+            Token::Identifier(_) => {
+                let variable = match self.parse_variable() {
+                    Some(variable) => variable,
+                    None => return None,
+                };
+
+                self.consume_token();
+                if self.cur_token_is(&Token::Semicolon) {
+                    return Some(ClassMember::Variable(access, variable))
+                } else {
+                    return None;
+                }
+            }
+            Token::Fn => {
+                self.consume_token();
+                let (is_static, func) = match self.parse_class_method_statement(class_name) {
+                    Some((is_static, param)) => (is_static, param),
+                    None => return None,
+                };
+                if is_static {
+                    access |= FieldAccess::STATIC;
+                }
+                return Some(ClassMember::Method(access, func))
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_class_method_statement(&mut self, class_name:String) -> Option<(bool, Statement)> {
+        let identifier = match self.parse_identifier() {
+            Some(identifier) => identifier,
+            None => return None,
+        };
+
+        if !self.expect_peek(&Token::OpenParen) {
+            return None;
+        }
+
+        let (is_static, parameters) = match self.parse_class_method_parameters(class_name) {
+            Some(parameters) => parameters,
+            None => return None,
+        };
+
+        let return_type = match self.parse_function_return_type() {
+            Some(identifier) => identifier,
+            None => return None,
+        };
+
+        if !self.expect_peek(&Token::OpenBrace) {
+            return None;
+        }
+
+        Some((is_static, Statement::Fn {
+            identifier,
+            parameters,
+            body: self.parse_block_statement(),
+            return_type
+        }))
+    }
+    fn parse_class_method_parameters(&mut self, class_name:String) -> Option<(bool, Vec<Expression>)> {
+        let mut is_static = true;
+        let mut parameters = Vec::new();
+
+        if self.peek_token_is(&Token::CloseParen) {
+            self.consume_token();
+            return Some((is_static, parameters));
+        }
+        if self.peek_token_is(&Token::Ampersand) {
+            self.consume_token();
+            if self.expect_peek(&Token::SelfKeyword) {
+                is_static = false;
+                parameters.push(Expression::Variable(String::from("self"),
+                                         Type::Ref(Box::from(Type::Class(class_name)))));
+            } else {
+                return None;
+            }
+        } else {
+            match self.parse_variable() {
+                Some(variable) => parameters.push(variable),
+                None => return None,
+            }
+        }
+
+        while self.peek_token_is(&Token::Comma) {
+            self.consume_token();
+            self.consume_token();
+
+            match self.parse_variable() {
+                Some(variable) => parameters.push(variable),
+                None => return None,
+            }
+        }
+
+        if !self.expect_peek(&Token::CloseParen) {
+            return None;
+        }
+
+        Some((is_static, parameters))
+    }
+
+    fn parse_call_class_member_expression(&mut self, class: Expression, precedence:Precedence) -> Option<Expression> {
+        let identifier = match class {
+            Expression::Identifier(class_name) => class_name,
+            _ => return None,
+        };
+        self.consume_token();
+        // Prefix
+        let mut call = match self.current_token() {
+            Token::Identifier(_) => self.parse_identifier_expression(),
+            _ => None,
+        };
+        // Infix
+        match self.future_token() {
+            Token::CallMember => {
+                self.consume_token();
+                call = self.parse_call_class_member_expression(call.unwrap(), precedence);
+            },
+            Token::OpenParen => {
+                self.consume_token();
+                call = self.parse_call_expression(call.unwrap());
+            },
+            _ => {},
+        }
+
+        let call = Box::new(call.unwrap());
+        Some(
+            Expression::CallMember {
+                identifier,
+                call
+            }
+        )
+    }
+
+    fn parse_call_class_static_member_expression(&mut self, class: Expression) -> Option<Expression> {
+        let identifier = match class {
+            Expression::Identifier(class_name) => class_name,
+            _ => return None,
+        };
+        self.consume_token();
+        // Prefix
+        let mut call = match self.current_token() {
+            Token::Identifier(_) => self.parse_identifier_expression(),
+            _ => None,
+        };
+        // Infix
+        match self.future_token() {
+            Token::OpenParen => {
+                self.consume_token();
+                call = self.parse_call_expression(call.unwrap());
+            },
+            _ => {},
+        }
+
+        let call = Box::new(call.unwrap());
+        Some(
+            Expression::CallStaticMember {
+                identifier,
+                call
+            }
+        )
+    }
+
+    fn parse_class_variable_expression(&mut self, class:Expression) -> Option<Expression> {
+        let identifier = match class {
+            Expression::Identifier(class_name) =>class_name,
+            _ => return None,
+        };
+        let inits = match self.parse_class_expression_list(&Token::CloseBrace) {
+            Some(arguments) => arguments,
+            None => return None,
+        };
+        Some(Expression::ClassInstance {
+            identifier,
+            inits
+        })
+    }
+
+    fn parse_class_expression_list(&mut self, end: &Token) -> Option<Vec<Expression>> {
+        let mut list = Vec::new();
+
+        if self.peek_token_is(&end) {
+            self.consume_token();
+            return Some(list);
+        }
+
+        self.consume_token();
+
+        match self.parse_class_create_insert() {
+            Some(expression) => list.push(expression),
+            None => return None,
+        };
+
+        while self.peek_token_is(&Token::Comma) {
+            self.consume_token();
+            self.consume_token();
+
+            match self.parse_class_create_insert() {
+                Some(expression) => list.push(expression),
+                None => return None,
+            };
+        }
+
+        if !self.expect_peek(end) {
+            return None;
+        }
+
+        Some(list)
+    }
+
+    fn parse_class_create_insert(&mut self) -> Option<Expression> {
+        let identifier = match self.parse_identifier() {
+            Some(identifier) => identifier,
+            None => return None,
+        };
+        if !self.expect_peek(&Token::Colon) {
+            return None;
+        }
+
+        self.consume_token(); // colon
+        let value = match self.parse_expression(Precedence::Lowest) {
+            Some(parameters) => parameters,
+            None => return None,
+        };
+
+        Some(Expression::Insert {
+            variable: Box::from(Expression::Identifier(identifier)),
+            expression: Box::from(value)
+        })
     }
 
     fn parse_let_statement(&mut self) -> Option<Statement> {
@@ -191,7 +520,7 @@ impl<'a> Parser<'a> {
             self.consume_token();
         }
 
-        match expression {
+        match expression.clone() {
             Expression::Literal(lit) => {
                 if let Expression::Variable(name, mut typ) = variable {
                     if Type::None == typ {
@@ -206,6 +535,24 @@ impl<'a> Parser<'a> {
                     });
                 }
                 None
+            },
+            Expression::CallMember {
+                identifier, ..
+            } => {
+                let object = Type::Class(identifier);
+                if let Expression::Variable(name, mut typ) = variable {
+                    if Type::None == typ {
+                        typ = object;
+                    } else if object != typ {
+                        // 타입 다름 오류
+                        self.error_variable_type(&typ, &object);
+                    }
+                    return Some(Statement::Let{
+                        variable: Expression::Variable(name, typ),
+                        expression: Some(expression)
+                    });
+                }
+                return None;
             },
             expression => Some(Statement::Let{
                 variable,
@@ -254,11 +601,10 @@ impl<'a> Parser<'a> {
                         Statement::Return(_) => return_index = block.len() as i128,
                         _ => {},
                     }
-                    block.push(statement)
+                    block.push(statement);
                 },
                 None => {}
             }
-
             self.consume_token();
         }
 
@@ -272,6 +618,7 @@ impl<'a> Parser<'a> {
     fn parse_expression(&mut self, precedence: Precedence) -> Option<Expression> {
         // Prefix
         let mut left = match self.current_token() {
+            Token::SelfKeyword => Some(Expression::Identifier(String::from("self"))),
             Token::Identifier(_) => self.parse_identifier_expression(),
             Token::I64(_) => self.parse_i64_expression(),
             Token::F64(_) => self.parse_f64_expression(),
@@ -285,10 +632,32 @@ impl<'a> Parser<'a> {
             }
             Token::OpenParen => self.parse_grouped_expression(),
             Token::If => self.parse_if_expression(),
-            Token::Fn => self.parse_function_expression(),
             _ => None,
         };
 
+        // class 초기화
+        if let Some(Expression::Identifier(_)) = left.clone() {
+            if self.past_token_is(&Token::Return) {
+                match self.future_token() {
+                    Token::OpenBrace => {
+                        self.consume_token();
+                        return self.parse_class_variable_expression(left.unwrap());
+                    },
+                    _ => {}
+                };
+            }
+        }
+        match self.future_token() {
+            Token::CallMember => {
+                self.consume_token();
+                left = self.parse_call_class_member_expression(left.unwrap(), precedence.clone());
+            },
+            Token::CallStaticMember => {
+                self.consume_token();
+                left = self.parse_call_class_static_member_expression(left.unwrap());
+            }
+            _ => {},
+        }
         // Infix
         while !self.peek_token_is(&Token::Semicolon) && precedence < self.peek_token_precedence() {
             match self.future_token() {
@@ -306,11 +675,11 @@ impl<'a> Parser<'a> {
                         },
                         _ => return left,
                     }
-                }
+                },
                 Token::OpenParen => {
                     self.consume_token();
                     left = self.parse_call_expression(left.unwrap());
-                }
+                },
                 _ => return left,
             }
         }
@@ -469,10 +838,13 @@ impl<'a> Parser<'a> {
             None => return None,
         };
 
-        Some(Expression::Call {
-            function: Box::new(func),
-            arguments,
-        })
+        if let Expression::Identifier(identifier) = func {
+            return Some(Expression::Call {
+                identifier,
+                arguments,
+            })
+        }
+        None
     }
 
     fn parse_grouped_expression(&mut self) -> Option<Expression> {
@@ -529,7 +901,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_function_expression(&mut self) -> Option<Expression> {
+    fn parse_function_statement(&mut self) -> Option<Statement> {
         match self.future_token() {
             Token::Identifier(_) => self.consume_token(),
             _ => return None,
@@ -558,7 +930,7 @@ impl<'a> Parser<'a> {
             return None;
         }
 
-        Some(Expression::Fn {
+        Some(Statement::Fn {
             identifier,
             parameters,
             body: self.parse_block_statement(),
@@ -659,6 +1031,65 @@ mod test {
         let mut parser = Parser::new(&tokens);
         let program = parser.parse();
 
+        println!("{:?}", tokens);
+        println!("{:?}", program);
+        println!("{:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_class_define() {
+        let input = r#"
+        class Test {
+            let private:i64;
+            pub let public:f64;
+            pub fn new() -> Test {
+                return Test {
+                    private: 0,
+                    public: 0
+                };
+            }
+        }
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+        println!("{:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_call_class_method() {
+        let input = r#"
+        let a:Test = Test::new();
+        a.public = 1;
+
+        class Test {
+            private:i64;
+            pub public:f64;
+            pub fn new() -> Test {
+                return Test {
+                    private: 0,
+                    public: 0
+                };
+            }
+            pub fn add(&self) -> f64 {
+                self.public = self.multi() + 1;
+                return self.public;
+            }
+            fn multi(&self) {
+                self.public = self.public * 5;
+            }
+        }
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
         println!("{:?}", program);
         println!("{:?}", parser.errors);
     }
