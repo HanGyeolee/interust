@@ -1,9 +1,7 @@
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
-use std::ops::BitOr;
 use crate::ast::{ClassMember, Expression, FieldAccess, Statement, Type};
-use crate::interpreter::Interpreter;
 use crate::Object;
 
 #[derive(Debug, Clone)]
@@ -56,6 +54,9 @@ impl ClassInfo {
         }
         None
     }
+    pub fn get_fields(&self) -> &HashMap<String, Field> {
+        &self.fields
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -67,8 +68,8 @@ pub struct FunctionInfo {
 
 #[derive(Debug)]
 pub struct MethodArea {
-    classes: HashMap<String, ClassInfo>,
-    functions: HashMap<String, FunctionInfo>,
+    classes: HashMap<String, Rc<ClassInfo>>,
+    functions: HashMap<String, Rc<FunctionInfo>>,
 }
 
 impl MethodArea {
@@ -85,17 +86,23 @@ impl MethodArea {
     }
 
     pub fn add_functions(&mut self, fn_name:String, info:FunctionInfo) {
-        self.functions.insert(fn_name, info);
+        self.functions.insert(fn_name, Rc::new(info));
     }
-    pub fn get_functions(&mut self, fn_name:&String) -> Option<FunctionInfo> {
-        self.functions.get(fn_name).cloned()
+    pub fn get_functions(&self, fn_name:&String) -> Option<Weak<FunctionInfo>> {
+        if let Some(info) = self.functions.get(fn_name){
+            return Some(Rc::downgrade(info));
+        }
+        None
     }
 
     pub fn add_class_def(&mut self, class_name:String, info:ClassInfo) {
-        self.classes.insert(class_name, info);
+        self.classes.insert(class_name, Rc::new(info));
     }
-    pub fn get_class_def(&mut self, class_name:&String) -> Option<ClassInfo> {
-        self.classes.get(class_name).cloned()
+    pub fn get_class_def(&self, class_name:&String) -> Option<Weak<ClassInfo>> {
+        if let Some(info) = self.classes.get(class_name){
+            return Some(Rc::downgrade(info));
+        }
+        None
     }
 }
 
@@ -259,9 +266,9 @@ impl InterpreterMemory {
         let id = self.heap.borrow_mut().add(instance);
         Object::Ref(id)
     }
-    pub fn is_callable_variable(&self, id: &usize, identifier:&String) -> bool {
-        if let Some(instance) = self.heap.borrow_mut().objects.get(id) {
-            if let Some(info) = self.get_class_def(&instance.class_name) {
+    pub fn is_callable_member_variable(&self, id: &usize, identifier:&String) -> bool {
+        if let Some(info) = self.get_class_def_from_id(&id) {
+            if let Some(info) = info.upgrade() {
                 if let Some(field) = info.fields.get(identifier) {
                     return field.access.is_public()
                 }
@@ -269,9 +276,9 @@ impl InterpreterMemory {
         }
         false
     }
-    pub fn is_callable_method(&self, id: &usize, identifier:&String) -> (bool, bool) {
-        if let Some(instance) = self.heap.borrow_mut().objects.get(id) {
-            if let Some(info) = self.get_class_def(&instance.class_name) {
+    pub fn is_callable_member_method(&self, id: &usize, identifier:&String) -> (bool, bool) {
+        if let Some(info) = self.get_class_def_from_id(&id) {
+            if let Some(info) = info.upgrade() {
                 if let Some(method) = info.methods.get(identifier) {
                     return (method.access.is_public(), method.access.is_static());
                 }
@@ -279,9 +286,15 @@ impl InterpreterMemory {
         }
         (false, false)
     }
-    pub fn call_method(&self, id: &usize, identifier:&String) -> Option<FunctionInfo> {
-        if let Some(instance) = self.heap.borrow_mut().objects.get(id) {
-            if let Some(info) = self.get_class_def(&instance.class_name) {
+    pub fn call_member_variable(&self, id: &usize, identifier:&String) -> Option<Object> {
+        if let Some(instance) = self.heap.borrow().objects.get(id) {
+            return instance.fields.get(identifier).cloned();
+        }
+        None
+    }
+    pub fn call_member_method(&self, id: &usize, identifier:&String) -> Option<FunctionInfo> {
+        if let Some(info) = self.get_class_def_from_id(&id) {
+            if let Some(info) = info.upgrade() {
                 if let Some(method) = info.methods.get(identifier).cloned() {
                     return Some(method.info);
                 }
@@ -289,6 +302,7 @@ impl InterpreterMemory {
         }
         None
     }
+    /// 클래스 내 멤버 변수를 변경할 때에만
     pub fn with_instance<F, R>(&self, id: &usize, f: F) -> Option<R>
     where F: FnOnce(&mut ClassInstance) -> R,
     {
@@ -304,8 +318,8 @@ impl InterpreterMemory {
         self.method_area.borrow_mut().add_functions(fn_name, info);
     }
 
-    pub fn get_function(&self, fn_name:&String) -> Option<FunctionInfo> {
-        self.method_area.borrow_mut().get_functions(fn_name)
+    pub fn get_function(&self, fn_name:&String) -> Option<Weak<FunctionInfo>> {
+        self.method_area.borrow().get_functions(fn_name)
     }
 
     pub fn set_class_def(&self, class_name:String, members: Vec<ClassMember>) {
@@ -339,26 +353,30 @@ impl InterpreterMemory {
         };
         self.method_area.borrow_mut().add_class_def(class_name, info);
     }
-    pub fn get_class_def(&self, class_name:&String) -> Option<ClassInfo> {
-        self.method_area.borrow_mut().get_class_def(class_name)
+    pub fn get_class_def(&self, class_name:&String) -> Option<Weak<ClassInfo>> {
+        self.method_area.borrow().get_class_def(class_name)
     }
-    pub fn get_class_def_from_id(&self, id: &usize) -> Option<ClassInfo> {
-        if let Some(instance) = self.heap.borrow_mut().objects.get(id) {
-            return self.method_area.borrow_mut().get_class_def(&instance.class_name);
+    pub fn get_class_def_from_id(&self, id: &usize) -> Option<Weak<ClassInfo>> {
+        if let Some(instance) = self.heap.borrow().objects.get(id) {
+            return self.get_class_def(&instance.class_name);
         }
         None
     }
-    pub fn is_static_method(&self, info:&ClassInfo, identifier:&String) -> (bool, bool) {
-        if let Some(method) = info.methods.get(identifier) {
-            return (method.access.is_public(), method.access.is_static());
+    pub fn get_class_name_from_id(&self, id: &usize) -> Option<String> {
+        if let Some(instance) = self.heap.borrow().objects.get(id) {
+            return Some(instance.class_name.clone());
+        }
+        None
+    }
+    pub fn is_static_method(&self, class_name:&String, identifier:&String) -> (bool, bool) {
+        if let Some(info) = self.get_class_def(class_name) {
+            if let Some(info) = info.upgrade() {
+                if let Some(method) = info.methods.get(identifier) {
+                    return (method.access.is_public(), method.access.is_static());
+                }
+            }
         }
         (false, false)
-    }
-    pub fn get_class_all_variable(&self, class_name:&String) -> Option<HashMap<String, Field>> {
-        if let Some(info) = self.method_area.borrow_mut().get_class_def(class_name){
-            return Some(info.fields);
-        }
-        None
     }
 
     pub fn push_stack(&mut self) -> Rc<RefCell<StackFrame>> {

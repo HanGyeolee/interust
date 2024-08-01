@@ -12,12 +12,9 @@
 //! - *str* ( *String* ) : 문자열 = 길이 제한 `usize`의 최대값 > Rust에서 `&str`이 아닌 `String`으로 변수 저장
 //!
 
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::Read;
-use std::rc::Rc;
 use crate::complie::compiler::{Compiler, MAGIC_NUMBER};
 use interpreter::Interpreter;
 use crate::parser::parser::Parser;
@@ -436,8 +433,8 @@ impl InterustScript {
     }
 
     fn read_constant_pool(&self, file: &Vec<u8>, index: usize) -> (Vec<ScriptObejct>, usize) {
-        let size = std::mem::size_of::<u16>();
-        let mut array = [0u8; std::mem::size_of::<u16>()];
+        let size = size_of::<u16>();
+        let mut array = [0u8; size_of::<u16>()];
         array.copy_from_slice(&file[index..index + size]);
         let length = u16::from_le_bytes(array);
         let mut index = index + size;
@@ -450,8 +447,8 @@ impl InterustScript {
                 },
                 0x02 => {
                     index += 1;
-                    let length = std::mem::size_of::<i64>();
-                    let mut array = [0u8; std::mem::size_of::<i64>()];
+                    let length = size_of::<i64>();
+                    let mut array = [0u8; size_of::<i64>()];
                     array.copy_from_slice(&file[index..index + length]);
                     let value = i64::from_le_bytes(array);
                     constant_pool.push(ScriptObejct::I64(value));
@@ -459,8 +456,8 @@ impl InterustScript {
                 },
                 0x03 => {
                     index += 1;
-                    let length = std::mem::size_of::<f64>();
-                    let mut array = [0u8; std::mem::size_of::<f64>()];
+                    let length = size_of::<f64>();
+                    let mut array = [0u8; size_of::<f64>()];
                     array.copy_from_slice(&file[index..index + length]);
                     let value = f64::from_le_bytes(array);
                     constant_pool.push(ScriptObejct::F64(value));
@@ -473,8 +470,8 @@ impl InterustScript {
                 },
                 0x0F => {
                     index += 1;
-                    let length = std::mem::size_of::<u32>();
-                    let mut array = [0u8; std::mem::size_of::<u32>()];
+                    let length = size_of::<u32>();
+                    let mut array = [0u8; size_of::<u32>()];
                     array.copy_from_slice(&file[index..index + length]);
                     let string_length = u32::from_le_bytes(array) as usize;
                     index += length;
@@ -496,8 +493,8 @@ impl InterustScript {
     }
 
     fn read_scope_info(&self, file:&Vec<u8>, index: usize) -> Scope {
-        let size = std::mem::size_of::<u16>();
-        let mut array = [0u8; std::mem::size_of::<u16>()];
+        let size = size_of::<u16>();
+        let mut array = [0u8; size_of::<u16>()];
         array.copy_from_slice(&file[index..index + size]);
         let identifier_count = u16::from_le_bytes(array);
         let mut index = index + size;
@@ -507,8 +504,8 @@ impl InterustScript {
             index += 1;
             if let Ok(name) = String::from_utf8(file[index..index + string_length].to_vec()) {
                 index += string_length;
-                let size = std::mem::size_of::<u16>();
-                let mut array = [0u8; std::mem::size_of::<u16>()];
+                let size = size_of::<u16>();
+                let mut array = [0u8; size_of::<u16>()];
                 array.copy_from_slice(&file[index..index + size]);
                 let addr = u16::from_le_bytes(array);
                 index += size;
@@ -538,8 +535,8 @@ impl InterustScript {
     }
 
     fn import_usize(&self, file: &Vec<u8>, index: usize) -> (usize, usize) {
-        let size = std::mem::size_of::<usize>();
-        let mut array = [0u8; std::mem::size_of::<usize>()];
+        let size = size_of::<usize>();
+        let mut array = [0u8; size_of::<usize>()];
         array.copy_from_slice(&file[index..index + size]);
         (usize::from_le_bytes(array), index + size)
     }
@@ -641,53 +638,6 @@ mod test {
     }
 }
 
-/*
-// [dependencies]
-// winapi = { version = "0.3.9", features = ["consoleapi"] }
-#[cfg(test)]
-mod test {
-    use std::{io, process, thread};
-    use std::io::Write;
-    use std::time::Duration;
-    use winapi::um::consoleapi::SetConsoleCtrlHandler;
-    use crate::InterustEngine;
-
-    unsafe extern "system" fn ctrl_handler(_: u32) -> i32 {
-        io::stdout().write("exit".as_bytes()).expect("");
-        process::exit(0); // 프로그램을 종료하고 종료 코드 0으로 반환
-    }
-
-    fn main() {
-
-        // Ctrl+C 신호를 처리하기 위한 플래그
-        unsafe {
-            SetConsoleCtrlHandler(Some(ctrl_handler), 1);
-        }
-
-        let mut interust = InterustEngine::new();
-        // 사용자 입력을 받는 루프
-        loop {
-            print!("> ");
-            io::stdout().flush().unwrap();
-            let mut input = String::new();
-            match io::stdin().read_line(&mut input) {
-                Ok(_) => {
-                    if let Some(result) = interust.run(input.as_str()){
-                        println!("anv : {0}", result);
-                    }
-                }
-                Err(_) => {}
-            }
-
-            // 잠시 대기 (optional: 너무 빠른 루프 방지)
-            thread::sleep(Duration::from_millis(100));
-        }
-
-        println!("Program terminated.");
-    }
-}
-*/
-
 pub type Program = Vec<Statement>;
 
 /// 해석기에서 토크나이징할 때 사용할 토큰들
@@ -750,8 +700,8 @@ pub enum Object {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Object::F64(ref value) => write!(f, "{value}"),
-            Object::I64(ref value) => write!(f, "{value}"),
+            Object::F64(ref value) => write!(f, "{value}f64"),
+            Object::I64(ref value) => write!(f, "{value}i64"),
             Object::Bool(ref value) => write!(f, "{value}"),
             Object::String(ref value) => write!(f, "{value}"),
             Object::Ref(ref id) => write!(f, "Ref:{id}"),
@@ -820,7 +770,7 @@ impl fmt::Display for Object {
             //Object::LibraryFn(_) => write!(f, "LibraryFunction"),
             Object::Null => write!(f, "null"),
             Object::ReturnValue(ref value) => write!(f, "{value}"),
-            Object::Error(ref value) => write!(f, "{value}"),
+            Object::Error(ref value) => write!(f, "Error:{value}"),
         }
     }
 }
@@ -1011,7 +961,11 @@ pub mod ast {
             identifier: String,
             call: Box<Expression>,
         },
-        ClassInstance {                      // 0x60
+        CallStaticMember {                  // 0x60
+            identifier: String,
+            call: Box<Expression>,
+        },
+        ClassInstance {                     // 0x61
             identifier: String,
             inits: Vec<Expression>
         },
@@ -1146,3 +1100,61 @@ pub mod script {
         }
     }
 }
+
+struct InterustLog {
+}
+
+impl InterustLog {
+    pub fn e(tag: &str, content: String){
+        eprintln!("{0} : {1}", tag, content);
+    }
+    /*pub fn i(tag: &str, content: String){
+        println!("{0} : {1}", tag, content);
+    }*/
+}
+
+/*
+// [dependencies]
+// winapi = { version = "0.3.9", features = ["consoleapi"] }
+#[cfg(test)]
+mod test {
+    use std::{io, process, thread};
+    use std::io::Write;
+    use std::time::Duration;
+    use winapi::um::consoleapi::SetConsoleCtrlHandler;
+    use crate::InterustEngine;
+
+    unsafe extern "system" fn ctrl_handler(_: u32) -> i32 {
+        io::stdout().write("exit".as_bytes()).expect("");
+        process::exit(0); // 프로그램을 종료하고 종료 코드 0으로 반환
+    }
+
+    fn main() {
+
+        // Ctrl+C 신호를 처리하기 위한 플래그
+        unsafe {
+            SetConsoleCtrlHandler(Some(ctrl_handler), 1);
+        }
+
+        let mut interust = InterustEngine::new();
+        // 사용자 입력을 받는 루프
+        loop {
+            print!("> ");
+            io::stdout().flush().unwrap();
+            let mut input = String::new();
+            match io::stdin().read_line(&mut input) {
+                Ok(_) => {
+                    if let Some(result) = interust.run(input.as_str()){
+                        println!("anv : {0}", result);
+                    }
+                }
+                Err(_) => {}
+            }
+
+            // 잠시 대기 (optional: 너무 빠른 루프 방지)
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        println!("Program terminated.");
+    }
+}*/

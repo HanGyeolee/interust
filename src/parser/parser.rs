@@ -1,4 +1,4 @@
-use std::ops::BitOrAssign;
+use std::cmp::Ordering;
 use crate::parser::error::{ParseError, ParseErrorKind};
 use crate::{Expression, Infix, Literal, Precedence, Prefix, Program, Statement, Token, Type};
 use crate::ast::{ClassMember, FieldAccess};
@@ -123,6 +123,18 @@ impl<'a> Parser<'a> {
 
             self.consume_token();
         }
+
+        program.sort_by(|a, b| {
+            match (a, b) {
+                (Statement::Class { .. }, Statement::Class { .. }) => Ordering::Equal,
+                (Statement::Class { .. }, _) => Ordering::Less,
+                (_, Statement::Class { .. }) => Ordering::Greater,
+                (Statement::Fn { .. }, Statement::Fn { .. }) => Ordering::Equal,
+                (Statement::Fn { .. }, _) => Ordering::Less,
+                (_, Statement::Fn { .. }) => Ordering::Greater,
+                _ => Ordering::Equal,
+            }
+        });
 
         program
     }
@@ -357,7 +369,7 @@ impl<'a> Parser<'a> {
         };
         // Infix
         match self.future_token() {
-            Token::CallMember | Token::CallStaticMember => {
+            Token::CallMember => {
                 self.consume_token();
                 call = self.parse_call_class_member_expression(call.unwrap(), precedence);
             },
@@ -371,6 +383,35 @@ impl<'a> Parser<'a> {
         let call = Box::new(call.unwrap());
         Some(
             Expression::CallMember {
+                identifier,
+                call
+            }
+        )
+    }
+
+    fn parse_call_class_static_member_expression(&mut self, class: Expression) -> Option<Expression> {
+        let identifier = match class {
+            Expression::Identifier(class_name) => class_name,
+            _ => return None,
+        };
+        self.consume_token();
+        // Prefix
+        let mut call = match self.current_token() {
+            Token::Identifier(_) => self.parse_identifier_expression(),
+            _ => None,
+        };
+        // Infix
+        match self.future_token() {
+            Token::OpenParen => {
+                self.consume_token();
+                call = self.parse_call_expression(call.unwrap());
+            },
+            _ => {},
+        }
+
+        let call = Box::new(call.unwrap());
+        Some(
+            Expression::CallStaticMember {
                 identifier,
                 call
             }
@@ -607,9 +648,13 @@ impl<'a> Parser<'a> {
             }
         }
         match self.future_token() {
-            Token::CallMember | Token::CallStaticMember => {
+            Token::CallMember => {
                 self.consume_token();
                 left = self.parse_call_class_member_expression(left.unwrap(), precedence.clone());
+            },
+            Token::CallStaticMember => {
+                self.consume_token();
+                left = self.parse_call_class_static_member_expression(left.unwrap());
             }
             _ => {},
         }
@@ -1018,6 +1063,9 @@ mod test {
     #[test]
     fn test_call_class_method() {
         let input = r#"
+        let a:Test = Test::new();
+        a.public = 1;
+
         class Test {
             private:i64;
             pub public:f64;
@@ -1035,9 +1083,6 @@ mod test {
                 self.public = self.public * 5;
             }
         }
-
-        let a:Test = Test::new();
-        a.public = 1;
         "#;
 
         let mut tokenizer = Tokenizer::new(input);

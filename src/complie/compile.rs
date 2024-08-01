@@ -399,6 +399,9 @@ impl Compile for Expression {
             Expression::CallMember { identifier, call} => {
 
             }
+            Expression::CallStaticMember { identifier, call} => {
+
+            }
             Expression::ClassInstance { identifier, inits} => {
 
             }
@@ -456,6 +459,9 @@ impl Compile for Expression {
                 }
             }
             Expression::CallMember { identifier, call} => {
+
+            }
+            Expression::CallStaticMember { identifier, call} => {
 
             }
             Expression::ClassInstance { identifier, inits} => {

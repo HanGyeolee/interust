@@ -1,16 +1,4 @@
-use crate::Token;
-
-struct InterustLog {
-}
-
-impl InterustLog {
-    pub fn e(tag: &str, content: String){
-        eprintln!("{0} : {1}", tag, content);
-    }
-    /*pub fn i(tag: &str, content: String){
-        println!("{0} : {1}", tag, content);
-    }*/
-}
+use crate::{InterustLog, Token};
 
 pub struct Tokenizer<'a> {
     input: &'a str,
@@ -291,7 +279,6 @@ impl<'a> Tokenizer<'a>{
 
 #[cfg(test)]
 mod test {
-    use crate::parser::parser::Parser;
     use crate::Token;
     use crate::tokenizer::tokenizer::Tokenizer;
 
