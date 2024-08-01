@@ -15,9 +15,9 @@
 //!
 //! 직접 class 를 선언할 수 있습니다.<br/>
 //! public 과 private 그리고 static 을 구분합니다.
-//! - static function : {Class_Name}::{Function_Name}() 으로 호출합니다.
-//! - public variable : {Class_Variable_Name}.{Public_Variable_Name} 으로 호출합니다.
-//! - private variable : 외부에서 호출할 수 없으나, 내부에서는 self.{Private_Variable_Name} 으로 호출 가능합니다.
+//! - static function : {*Class_Name*}::{*Function_Name*}() 으로 호출합니다.
+//! - public variable : {*Class_Variable_Name*}.{*Public_Variable_Name*} 으로 호출합니다.
+//! - private variable : 외부에서 호출할 수 없으나, 내부에서는 *self*.{*Private_Variable_Name*} 으로 호출 가능합니다.
 
 use std::fmt;
 use std::fs::File;

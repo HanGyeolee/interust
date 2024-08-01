@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["ClassMember","Expression","Infix","Literal","Precedence","Prefix","Statement","Type"],"struct":["FieldAccess"]};
