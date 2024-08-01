@@ -1,43 +1,81 @@
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::cell::RefCell;
-use crate::interpreter::environment::Environment;
+use std::collections::HashMap;
+use crate::interpreter::environment::*;
 use crate::{Expression, Infix, Literal, Object, Prefix, Program, Statement, Type};
 
 pub mod environment;
 
 #[derive(Debug)]
 pub struct Interpreter {
-    environment: Rc<RefCell<Environment>>,
+    memory: InterpreterMemory,
 }
 
 impl Interpreter {
-    pub fn new(environment: Rc<RefCell<Environment>>) -> Self {
+    pub fn new() -> Self {
         Interpreter {
-            environment
+            memory: InterpreterMemory::new()
+        }
+    }
+    pub fn from(method_area: Rc<RefCell<MethodArea>>,
+               heap: Rc<RefCell<Heap>>,
+               stack: Rc<RefCell<StackFrame>>) -> Self {
+        Interpreter {
+            memory: InterpreterMemory::from(method_area, heap, stack)
         }
     }
 
     pub fn reset(&self) {
-        self.environment.borrow_mut().reset();
+        self.memory.reset();
     }
 
-    fn is_truthy(object: Object) -> bool {
-        match object {
-            Object::Null | Object::Bool(false) |
-            Object::I64(0) => false,
-            Object::F64(v) => v < f64::EPSILON || v > -f64::EPSILON,
-            _ => true
-        }
-    }
-
-    fn error(msg: String) -> Object {
-        Object::Error(msg)
-    }
-
-    fn is_error(object: &Object) -> bool {
-        match object {
-            Object::Error(_) => true,
-            _ => false,
+    /**
+    Type 에 맞게 Object Casting
+     */
+    fn eval_cast(&self, typ: &Type, object: &Object) -> Object{
+        match typ {
+            Type::F64 => match object {
+                Object::F64(v) => Object::F64(v.clone()),
+                Object::I64(v) => Object::F64(v.clone() as f64),
+                Object::Bool(v) => Object::F64(if v.clone() { 1.0 } else { 0.0 }),
+                _ => Object::Error(format!(
+                    "cannot cast: {object} to {typ}",
+                )),
+            }
+            Type::I64 => match object {
+                Object::F64(v) => Object::I64(v.clone() as i64),
+                Object::I64(v) => Object::I64(v.clone()),
+                Object::Bool(v) => Object::I64(if v.clone() { 1 } else { 0 }),
+                _ => Object::Error(format!(
+                    "cannot cast: {object} to {typ}",
+                )),
+            }
+            Type::String => match object {
+                Object::String(v) => Object::String(v.clone()),
+                _ => Object::Error(format!(
+                    "cannot cast: {object} to {typ}",
+                )),
+            }
+            Type::Bool => Object::Bool(is_truthy(object)),
+            Type::Class(name) => match object {
+                Object::Ref(id) => {
+                    if let Some(class_name) = self.memory.get_class_name_from_id(id){
+                        if class_name.eq(name) {
+                            return object.clone();
+                        }
+                        return Object::Error(format!(
+                            "cannot cast: class {class_name} to class {name}",
+                        ));
+                    }
+                    Object::Error(format!(
+                        "cannot cast: {object} to  class {name}",
+                    ))
+                },
+                _ => Object::Error(format!(
+                    "cannot cast: {object} to  class {name}",
+                )),
+            }
+            _ => object.clone()
         }
     }
 
@@ -50,7 +88,7 @@ impl Interpreter {
         for statement in program {
             match self.eval_statement(statement) {
                 Some(Object::ReturnValue(value)) => return Some(*value),
-                Some(Object::Error(msg)) => return Some(Object::Error(msg)),
+                Some(Object::Error(msg)) => return Some(Object::Error(msg.clone())),
                 object => result = object,
             }
         }
@@ -61,31 +99,25 @@ impl Interpreter {
     fn eval_statement(&mut self, statement: Statement) -> Option<Object> {
         match statement {
             Statement::Let{variable, expression} => {
+                let Expression::Variable(name, typ) = variable else {
+                    return Some(Object::Error(format!(
+                        "wrong expression: {:?} expected but {:?} given",
+                        Expression::Variable("".to_string(), Type::None),
+                        variable,
+                    )));
+                };
                 if let Some(init) = expression {
                     let value = self.eval_expression(init)
                         .unwrap_or_else(|| Object::Error(String::from("RuntimeError")));
 
-                    if Self::is_error(&value) {
+                    if is_error(&value) {
                         return Some(value);
                     } else {
-                        let Expression::Variable(name, typ) = variable else {
-                            return Some(Self::error(format!(
-                                "wrong expression: {:?} expected but {:?} given",
-                                Expression::Variable("".to_string(), Type::None),
-                                variable,
-                            )));
-                        };
                         let cast = self.eval_cast(&typ, &value);
-                        self.environment.borrow_mut().init(name, &cast);
+                        self.memory.set_variable(name, cast);
                     }
-                }else {
-                    let Expression::Variable(name, typ) = variable else {
-                        return Some(Self::error(format!(
-                            "wrong expression: {:?} expected but {:?} given",
-                            Expression::Variable("".to_string(), Type::None),
-                            variable,
-                        )));
-                    };
+                }
+                else {
                     let value = match self.eval_expression(
                         Expression::Literal(Literal::None)
                     ) {
@@ -93,10 +125,30 @@ impl Interpreter {
                         None => return None,
                     };
                     let cast = self.eval_cast(&typ, &value);
-                    self.environment.borrow_mut().init(name, &cast);
+                    self.memory.set_variable(name, cast);
                 }
 
                 return None;
+            }
+            Statement::Fn { identifier, parameters, body, return_type } => {
+                self.memory.set_function(identifier, parameters, body, return_type);
+                return None;
+            },
+            Statement::Class {identifier, members} => {
+                self.memory.set_class_def(identifier, members);
+                return None;
+            },
+            Statement::Return(expression) => {
+                let value = match self.eval_expression(expression) {
+                    Some(value) => value,
+                    None => return None,
+                };
+
+                if is_error(&value) {
+                    Some(value)
+                } else {
+                    Some(Object::ReturnValue(Box::new(value)))
+                }
             }
             Statement::Expression(expression) => {
                 let value = match self.eval_expression(expression) {
@@ -106,24 +158,61 @@ impl Interpreter {
 
                 Some(value)
             }
-            Statement::Return(expression) => {
-                let value = match self.eval_expression(expression) {
-                    Some(value) => value,
-                    None => return None,
-                };
-
-                if Self::is_error(&value) {
-                    Some(value)
-                } else {
-                    Some(Object::ReturnValue(Box::new(value)))
-                }
-            }
         }
     }
 
     fn eval_expression(&mut self, expression: Expression) -> Option<Object> {
         match expression {
             Expression::Identifier(identifier) => Some(self.eval_identifier(identifier)),
+            Expression::Insert {
+                variable,
+                expression
+            } => self.eval_insert_expression(*variable, *expression),
+            Expression::If {
+                condition,
+                consequence,
+                alternative,
+            } => self.eval_if_expression(*condition, consequence, alternative),
+            Expression::Call {
+                identifier,
+                arguments,
+            } => Some(self.eval_call_expression(identifier, arguments)),
+            Expression::CallMember {
+                identifier,
+                call
+            } => Some(self.eval_call_member(identifier, *call)),
+            Expression::CallStaticMember {
+                identifier,
+                call
+            } => Some(self.eval_call_static_member(identifier, *call)),
+            Expression::ClassInstance {
+                identifier,
+                inits
+            } => {
+                let mut fields = HashMap::new();
+                for insert in inits {
+                    if let Expression::Insert {
+                        variable,
+                        expression
+                    } = insert {
+                        if let Expression::Identifier(field_name) = *variable {
+                            if let Some(obj) = self.eval_expression(*expression) {
+                                fields.insert(field_name, obj.clone());
+                            }
+                        }
+                    }
+                }
+                if let Some(class_info) = self.memory.get_class_def(&identifier){
+                    if let Some(class_info) = class_info.upgrade() {
+                        for (key, field) in class_info.get_fields() {
+                            if let None = fields.get(key){
+                                fields.insert(key.clone(), field.typ.default());
+                            }
+                        }
+                    }
+                }
+                return Some(self.memory.set_instance(identifier, fields));
+            }
             Expression::Literal(literal) => Some(self.eval_literal(literal)),
             Expression::Prefix(prefix, right_expression) => {
                 if let Some(right) = self.eval_expression(*right_expression) {
@@ -142,26 +231,6 @@ impl Interpreter {
                     None
                 }
             }
-            Expression::Insert { variable, expression} => self.eval_insert_expression(*variable, *expression),
-            Expression::If {
-                condition,
-                consequence,
-                alternative,
-            } => self.eval_if_expression(*condition, consequence, alternative),
-            Expression::Fn { identifier, parameters, body, return_type } => {
-                let value = Object::Fn(
-                    parameters,
-                    body,
-                    Rc::clone(&self.environment),
-                    return_type
-                );
-                self.environment.borrow_mut().init(identifier, &value);
-                None
-            },
-            Expression::Call {
-                function,
-                arguments,
-            } => Some(self.eval_call_expression(function, arguments)),
             _ => None
         }
     }
@@ -171,8 +240,8 @@ impl Interpreter {
     변수 혹은 함수 이름, 클래스 이름 등
      */
     fn eval_identifier(&mut self, identifier: String) -> Object {
-        self.environment.borrow_mut().get(&identifier)
-            .unwrap_or_else(|| Object::Error(String::from(format!("identifier not found: {identifier}"))))
+        self.memory.get_variable(&identifier)
+            .unwrap_or_else(|| Object::Error(format!("identifier not found: {identifier}")))
     }
 
     /**
@@ -202,7 +271,7 @@ impl Interpreter {
     Not 접두사 연결
      */
     fn eval_not_operator_expression(&mut self, right: Object) -> Object {
-        Object::Bool(!Self::is_truthy(right))
+        Object::Bool(!is_truthy(&right))
     }
 
     /**
@@ -212,7 +281,7 @@ impl Interpreter {
         match right {
             Object::F64(value) => Object::F64(-value),
             Object::I64(value) => Object::I64(-value),
-            _ => Self::error(format!("unknown operator: -{right}")),
+            _ => Object::Error(format!("unknown operator: -{right}")),
         }
     }
 
@@ -223,30 +292,30 @@ impl Interpreter {
         match left {
             Object::I64(left_value) => {
                 if let Object::I64(right_value) = right {
-                    self.eval_infix_integer_expression(infix, left_value, right_value)
+                    self.eval_infix_integer_expression(infix, left_value.clone(), right_value.clone())
                 } else if let Object::F64(right_value) = right {
-                    self.eval_infix_float_expression(infix, left_value as f64, right_value)
+                    self.eval_infix_float_expression(infix, left_value.clone() as f64, right_value.clone())
                 } else {
-                    Self::error(format!("type mismatch: {left} {infix} {right}"))
+                    Object::Error(format!("type mismatch: {left} {infix} {right}"))
                 }
             }
             Object::F64(left_value) => {
                 if let Object::F64(right_value) = right {
-                    self.eval_infix_float_expression(infix, left_value, right_value)
+                    self.eval_infix_float_expression(infix, left_value.clone(), right_value.clone())
                 } else if let Object::I64(right_value) = right {
-                    self.eval_infix_float_expression(infix, left_value, right_value as f64)
+                    self.eval_infix_float_expression(infix, left_value.clone(), right_value.clone() as f64)
                 }  else {
-                    Self::error(format!("type mismatch: {left} {infix} {right}"))
+                    Object::Error(format!("type mismatch: {left} {infix} {right}"))
                 }
             }
             Object::Bool(left_value) => {
                 if let Object::Bool(right_value) = right {
-                    self.eval_infix_boolean_expression(infix, left_value, right_value)
+                    self.eval_infix_boolean_expression(infix, left_value.clone(), right_value.clone())
                 } else {
-                    Self::error(format!("type mismatch: {left} {infix} {right}"))
+                    Object::Error(format!("type mismatch: {left} {infix} {right}"))
                 }
             }
-            _ => Self::error(format!("unknown operator: {left} {infix} {right}")),
+            _ => Object::Error(format!("unknown operator: {left} {infix} {right}")),
         }
     }
 
@@ -261,18 +330,18 @@ impl Interpreter {
         right_value: i64,
     ) -> Object {
         match infix {
-            Infix::Plus => Object::I64(left_value + right_value),
-            Infix::Minus => Object::I64(left_value - right_value),
-            Infix::Multiply => Object::I64(left_value * right_value),
-            Infix::Divide => Object::I64(left_value / right_value),
-            Infix::Mod => Object::I64(left_value % right_value),
-            Infix::Equal => Object::Bool(left_value == right_value),
-            Infix::NotEqual => Object::Bool(left_value != right_value),
-            Infix::LessThan => Object::Bool(left_value < right_value),
-            Infix::GreaterThan => Object::Bool(left_value > right_value),
-            Infix::BitAnd => Object::I64(left_value & right_value),
-            Infix::BitOr => Object::I64(left_value | right_value),
-            _ => Self::error(format!("unknown operator: {left_value} {infix} {right_value}")),
+            Infix::Plus =>          Object::I64(left_value + right_value),
+            Infix::Minus =>         Object::I64(left_value - right_value),
+            Infix::Multiply =>      Object::I64(left_value * right_value),
+            Infix::Divide =>        Object::I64(left_value / right_value),
+            Infix::Mod =>           Object::I64(left_value % right_value),
+            Infix::Equal =>         Object::Bool(left_value == right_value),
+            Infix::NotEqual =>      Object::Bool(left_value != right_value),
+            Infix::LessThan =>      Object::Bool(left_value < right_value),
+            Infix::GreaterThan =>   Object::Bool(left_value > right_value),
+            Infix::BitAnd =>        Object::I64(left_value & right_value),
+            Infix::BitOr =>         Object::I64(left_value | right_value),
+            _ => Object::Error(format!("unknown operator: {left_value} {infix} {right_value}")),
         }
     }
 
@@ -286,15 +355,15 @@ impl Interpreter {
         right_value: f64,
     ) -> Object {
         match infix {
-            Infix::Plus => Object::F64(left_value + right_value),
-            Infix::Minus => Object::F64(left_value - right_value),
-            Infix::Multiply => Object::F64(left_value * right_value),
-            Infix::Divide => Object::F64(left_value / right_value),
-            Infix::Equal => Object::Bool(left_value == right_value),
-            Infix::NotEqual => Object::Bool(left_value != right_value),
-            Infix::LessThan => Object::Bool(left_value < right_value),
-            Infix::GreaterThan => Object::Bool(left_value > right_value),
-            _ => Self::error(format!("unknown operator: {left_value} {infix} {right_value}")),
+            Infix::Plus =>          Object::F64(left_value + right_value),
+            Infix::Minus =>         Object::F64(left_value - right_value),
+            Infix::Multiply =>      Object::F64(left_value * right_value),
+            Infix::Divide =>        Object::F64(left_value / right_value),
+            Infix::Equal =>         Object::Bool(left_value == right_value),
+            Infix::NotEqual =>      Object::Bool(left_value != right_value),
+            Infix::LessThan =>      Object::Bool(left_value < right_value),
+            Infix::GreaterThan =>   Object::Bool(left_value > right_value),
+            _ => Object::Error(format!("unknown operator: {left_value} {infix} {right_value}")),
         }
     }
 
@@ -308,13 +377,13 @@ impl Interpreter {
         right_value: bool,
     ) -> Object {
         match infix {
-            Infix::Equal => Object::Bool(left_value == right_value),
-            Infix::NotEqual => Object::Bool(left_value != right_value),
-            Infix::And => Object::Bool(left_value && right_value),
-            Infix::Or => Object::Bool(left_value || right_value),
-            Infix::BitAnd => Object::Bool(left_value & right_value),
-            Infix::BitOr => Object::Bool(left_value | right_value),
-            _ => Self::error(format!(
+            Infix::Equal =>     Object::Bool(left_value == right_value),
+            Infix::NotEqual =>  Object::Bool(left_value != right_value),
+            Infix::And =>       Object::Bool(left_value && right_value),
+            Infix::Or =>        Object::Bool(left_value || right_value),
+            Infix::BitAnd =>    Object::Bool(left_value & right_value),
+            Infix::BitOr =>     Object::Bool(left_value | right_value),
+            _ => Object::Error(format!(
                 "unknown operator: {left_value} {infix} {right_value}",
             )),
         }
@@ -328,62 +397,90 @@ impl Interpreter {
         variable: Expression,
         expression: Expression,
     ) -> Option<Object> {
-        let value = match self.eval_expression(expression) {
-            Some(value) => value,
-            None => return None,
-        };
+        match variable {
+            Expression::Identifier(name) => {
+                let value = match self.eval_expression(expression) {
+                    Some(value) => value,
+                    None => return None,
+                };
 
-        if Self::is_error(&value) {
-            Some(value)
-        } else {
-            let Expression::Identifier(name) = variable else {
-                return Some(Self::error(format!(
-                    "wrong expression: {:?} expected but {:?} given",
-                    Expression::Variable("".to_string(), Type::None),
-                    variable,
-                )));
-            };
-            let object = self.environment.borrow().get(&name);
+                if is_error(&value) {
+                    Some(value)
+                } else {
+                    let object = self.memory.get_variable(&name);
 
-            if let Some(object) = object {
-                let typ = object.get_type();
-                let cast = self.eval_cast(&typ, &value);
-                self.environment.borrow_mut().init(name, &cast);
-            }
+                    if let Some(object) = object {
+                        let typ = object.get_type();
+                        let cast = self.eval_cast(&typ, &value);
+                        self.memory.set_variable(name, cast);
+                    }
+                    None
+                }
+            },
+            Expression::CallMember { identifier, call } => {
+                let object = self.memory.get_variable(&identifier);
 
-            None
+                if let Some(Object::Ref(id)) = object {
+                    return self.eval_insert_class_member(identifier=="self" , &id, *call.clone(), expression);
+                }
+                None
+            },
+            _ => return Some(Object::Error(format!(
+                "wrong expression: {:?} expected but {:?} given",
+                Expression::Variable("".to_string(), Type::None),
+                variable,
+            )))
         }
     }
 
-    /**
-    Type 에 맞게 Object Casting
-     */
-    fn eval_cast(&mut self, typ: &Type, object: &Object) -> Object{
-        match typ {
-            Type::F64 => match object {
-                Object::F64(v) => Object::F64(v.clone()),
-                Object::I64(v) => Object::F64(v.clone() as f64),
-                Object::Bool(v) => Object::F64(if v.clone() { 1.0 } else { 0.0 }),
-                _ => Self::error(format!(
-                    "cannot cast: {object} to {typ}",
-                )),
-            }
-            Type::I64 => match object {
-                Object::F64(v) => Object::I64(v.clone() as i64),
-                Object::I64(v) => Object::I64(v.clone()),
-                Object::Bool(v) => Object::I64(if v.clone() { 1 } else { 0 }),
-                _ => Self::error(format!(
-                    "cannot cast: {object} to {typ}",
-                )),
-            }
-            Type::String => match object {
-                Object::String(v) => Object::String(v.clone()),
-                _ => Self::error(format!(
-                    "cannot cast: {object} to {typ}",
-                )),
-            }
-            Type::Bool => Object::Bool(Self::is_truthy(object.clone())),
-            _ => object.clone()
+    fn eval_insert_class_member(
+        &mut self,
+        is_self: bool,
+        id: &usize,
+        variable: Expression,
+        expression: Expression,
+    ) -> Option<Object> {
+        return match variable {
+            Expression::Identifier(name) => {
+                let value = match self.eval_expression(expression) {
+                    Some(value) => value,
+                    None => return None,
+                };
+
+                if is_error(&value) {
+                    Some(value)
+                } else {
+                    let is_callable = self.memory.is_callable_member_variable(id, &name);
+                    self.memory.with_instance(id, |instance| {
+                        if is_self || is_callable {
+                            let object = instance.fields.get(&name);
+
+                            if let Some(object) = object {
+                                let typ = object.get_type();
+                                let cast = self.eval_cast(&typ, &value);
+                                instance.fields.insert(name, cast);
+                            }
+                        }
+                    });
+                    None
+                }
+            },
+            Expression::CallMember { identifier, call } => {
+                let is_callable = self.memory.is_callable_member_variable(id, &identifier);
+                if is_self || is_callable {
+                    let object = self.memory.get_variable(&identifier);
+
+                    if let Some(Object::Ref(id)) = object {
+                        return self.eval_insert_class_member(false, &id, *call.clone(), expression);
+                    }
+                }
+                None
+            },
+            _ => Some(Object::Error(format!(
+                "wrong expression: {:?} expected but {:?} given",
+                Expression::Variable("".to_string(), Type::None),
+                variable,
+            )))
         }
     }
 
@@ -401,7 +498,7 @@ impl Interpreter {
             None => return None,
         };
 
-        if Self::is_truthy(condition) {
+        if is_truthy(&condition) {
             self.eval_block_statement(consquence)
         } else if let Some(alternative) = alternative {
             self.eval_block_statement(alternative)
@@ -416,7 +513,7 @@ impl Interpreter {
      */
     fn eval_call_expression(
         &mut self,
-        function: Box<Expression>,
+        identifier: String,
         arguments: Vec<Expression>,
     ) -> Object {
         let arguments = arguments
@@ -427,49 +524,155 @@ impl Interpreter {
             })
             .collect::<Vec<_>>();
 
-        let (parameters, body, environment, return_type) = match self.eval_expression(*function) {
-            Some(Object::Fn(parameters, body, environment, return_type)) => {
-                (parameters, body, environment, return_type)
+        if let Some(info) = self.memory.get_function(&identifier){
+            if let Some(info) = info.upgrade() {
+                if info.parameters.len() != arguments.len() {
+                    return Object::Error(format!(
+                        "wrong number of arguments: {} expected but {} given",
+                        info.parameters.len(),
+                        arguments.len(),
+                    ));
+                }
+
+                let current_env = self.memory.push_stack();
+                let list = info.parameters.iter().zip(arguments.iter());
+
+                for (_, (variable, object)) in list.enumerate() {
+                    let Expression::Variable(name, typ) = variable else {
+                        return Object::Error(format!(
+                            "wrong expression: {:?} expected but {:?} given",
+                            Expression::Variable("".to_string(), Type::None),
+                            variable,
+                        ));
+                    };
+                    let cast = self.eval_cast(typ, object);
+                    self.memory.set_variable(name.clone(), cast);
+                }
+                let object = self.eval_block_statement(info.body.clone());
+
+                self.memory.pop_stack(current_env);
+
+                return match object {
+                    Some(Object::ReturnValue(object)) => self.eval_cast(&info.return_type, &object),
+                    _ => Object::Null,
+                }
             }
-            //Some(Object::LibraryFn(function)) => return function(arguments),
-            Some(object) => return Self::error(format!("{object} is not valid function")),
-            None => return Object::Null,
+        }
+        Object::Null
+    }
+
+    /// 클래스 정적 멤버 접근
+    fn eval_call_static_member(&mut self, identifier:String, called:Expression) -> Object {
+        match called {
+            Expression::Call { identifier: fn_name, arguments } => {
+                let (is_pub, is_stat) = self.memory.is_static_method(&identifier, &fn_name);
+                if is_pub && is_stat {
+                    if let Some(info) = self.memory.get_class_def(&identifier) {
+                        return self.eval_class_method_call(info, fn_name, arguments);
+                    }
+                }
+                return Object::Error(format!("The method is inaccessible or does not exist."));
+            },
+            _ => {}
+        }
+        Object::Null
+    }
+
+
+    /// 클래스 멤버 접근
+    fn eval_call_member(&mut self, identifier:String, called:Expression) -> Object {
+        if let Object::Ref(id) = self.eval_identifier(identifier.clone()) {
+            //println!("{identifier} == Ref:{:?}",id);
+            let no_need_public = identifier == "self";
+            return match called {
+                Expression::Call { identifier: fn_name, mut arguments } => {
+                    //println!("{identifier}.{fn_name}() 함수 호출");
+                    let (is_pub, _) = self.memory.is_callable_member_method(&id, &fn_name);
+                    //println!("{identifier}.{fn_name}() 함수 정보 : is_pub={is_pub}");
+                    if no_need_public || is_pub {
+                        if let Some(info) = self.memory.get_class_def_from_id(&id) {
+                            let mut self_arguments = vec![Expression::Identifier(identifier)];
+                            self_arguments.append(&mut arguments);
+                            return self.eval_class_method_call(info, fn_name, self_arguments);
+                        }
+                    }
+                    Object::Error(format!("The method is inaccessible or does not exist."))
+                },
+                Expression::Identifier(member_name) => {
+                    //println!("{identifier}.{member_name} 변수 호출");
+                    let is_pub = self.memory.is_callable_member_variable(&id, &member_name);
+                    //println!("{identifier}.{member_name} 변수 정보 : is_pub={is_pub}");
+                    if no_need_public || is_pub {
+                        if let Some(object) = self.memory.call_member_variable(&id, &member_name) {
+                            return object;
+                        }
+                    }
+                    Object::Error(format!("The variable is inaccessible or does not exist."))
+                },
+                _ => Object::Error(format!(
+                    "wrong expression: {:?} given",
+                    called
+                ))
+            }
+        }
+        Object::Null
+    }
+
+    /**
+    클래스 메소드 실행 연결, public, private, static 상관 없이 실행
+     */
+    fn eval_class_method_call(
+        &mut self,
+        info: Weak<ClassInfo>,
+        identifier: String,
+        arguments: Vec<Expression>
+    ) -> Object {
+        let Some(info) = info.upgrade() else {
+            return Object::Error(format!("There is no class define."));
         };
 
-        if parameters.len() != arguments.len() {
-            return Self::error(format!(
-                "wrong number of arguments: {} expected but {} given",
-                parameters.len(),
-                arguments.len(),
-            ));
-        }
+        let arguments = arguments
+            .iter()
+            .map(|expression| {
+                self.eval_expression(expression.clone())
+                    .unwrap_or(Object::Null)
+            })
+            .collect::<Vec<_>>();
 
-        let current_env = Rc::clone(&self.environment);
-        let mut scoped_env = Environment::new_with_outer(Rc::clone(&environment));
-        let list = parameters.iter().zip(arguments.iter());
-
-        for (_, (variable, object)) in list.enumerate() {
-            let Expression::Variable(name, typ) = variable else {
-                return Self::error(format!(
-                    "wrong expression: {:?} expected but {:?} given",
-                    Expression::Variable("".to_string(), Type::None),
-                    variable,
+        if let Some(FunctionInfo{parameters, body, return_type})
+            = info.get_method_info(&identifier) {
+            if parameters.len() != arguments.len() {
+                return Object::Error(format!(
+                    "wrong number of arguments: {} expected but {} given",
+                    parameters.len(),
+                    arguments.len(),
                 ));
-            };
-            let cast = self.eval_cast(typ, object);
-            scoped_env.init(name.clone(), &cast);
+            }
+
+            let current_env = self.memory.push_stack();
+            let list = parameters.iter().zip(arguments.iter());
+
+            for (_, (variable, object)) in list.enumerate() {
+                let Expression::Variable(name, typ) = variable else {
+                    return Object::Error(format!(
+                        "wrong expression: {:?} expected but {:?} given",
+                        Expression::Variable("".to_string(), Type::None),
+                        variable,
+                    ));
+                };
+                let cast = self.eval_cast(typ, object);
+                self.memory.set_variable(name.clone(), cast);
+            }
+            let object = self.eval_block_statement(body.clone());
+
+            self.memory.pop_stack(current_env);
+
+            return match object {
+                Some(Object::ReturnValue(object)) => self.eval_cast(&return_type, &object),
+                _ => Object::Null,
+            }
         }
-
-        self.environment = Rc::new(RefCell::new(scoped_env));
-
-        let object = self.eval_block_statement(body);
-
-        self.environment = current_env;
-
-        match object {
-            Some(Object::ReturnValue(object)) => Object::ReturnValue(Box::new(self.eval_cast(&return_type, &object))),
-            _ => Object::Null,
-        }
+        Object::Null
     }
 
     fn eval_block_statement(&mut self, statements: Vec<Statement>) -> Option<Object> {
@@ -477,7 +680,7 @@ impl Interpreter {
 
         for statement in statements {
             match self.eval_statement(statement) {
-                Some(Object::ReturnValue(value)) => return Some(Object::ReturnValue(value)),
+                Some(Object::ReturnValue(value)) => return Some(Object::ReturnValue(value.clone())),
                 Some(Object::Error(msg)) => return Some(Object::Error(msg)),
                 object => result = object,
             }
@@ -487,19 +690,32 @@ impl Interpreter {
     }
 }
 
+fn is_truthy(object: &Object) -> bool {
+    match object {
+        Object::Null | Object::Bool(false) |
+        Object::I64(0) => false,
+        Object::F64(v) => *v < f64::EPSILON || *v > -f64::EPSILON,
+        _ => true
+    }
+}
+
+fn is_error(object: &Object) -> bool {
+    match object {
+        Object::Error(_) => true,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
-    use std::rc::Rc;
 
-    use crate::interpreter::environment::Environment;
     use crate::interpreter::Interpreter;
     use crate::Object;
     use crate::parser::parser::Parser;
     use crate::tokenizer::tokenizer::Tokenizer;
 
     fn eval(input: &str) -> Option<Object> {
-        let mut e = Interpreter::new(Rc::new(RefCell::new(Environment::new())));
+        let mut e = Interpreter::new();
         let t = Tokenizer::new(input).tokenize();
         e.eval(Parser::new(&t).parse())
     }
@@ -780,23 +996,106 @@ mod tests {
     }
 
     #[test]
-    fn test_library() {
+    fn test_class_define() {
         let tests = vec![
             (r#"
-                let a:i64 = 10;
-                /* let b; */
-                println("{:?}", a);
-            "#, Some(Object::Null)
+            class Test {
+                private:i64;
+                pub public:f64;
+                pub fn new() -> Test {
+                    return Test {
+                        private: 0,
+                        public: 0
+                    };
+                }
+                pub fn add(&self) -> f64 {
+                    self.public = self.multi() + 1;
+                    return self.public;
+                }
+                fn multi(&self) {
+                    self.public = self.public * 5;
+                }
+            }"#, None
             ),
         ];
 
         for (input, expect) in tests {
-            let mut e = Interpreter::new(Rc::new(RefCell::new(Environment::new())));
+            assert_eq!(expect, eval(input));
+        }
+    }
+
+    #[test]
+    fn test_class_call() {
+        let tests = vec![
+            (r#"
+            class Test {
+                private:i64;
+                pub public:f64;
+                pub fn new() -> Test {
+                    return Test {
+                        private: 0,
+                        public: 0
+                    };
+                }
+                pub fn add(&self) -> f64 {
+                    self.public = self.multi() + 1;
+                    return self.public;
+                }
+                fn multi(&self) -> f64 {
+                    self.public = self.public * 5;
+                }
+            }
+            let a:Test = Test::new();
+            a"#, Some(Object::Ref(0))
+            ),
+            (r#"
+            class Test {
+                private:i64;
+                pub public:f64;
+                pub fn new() -> Test {
+                    return Test {
+                        private: 1,
+                        public: 2
+                    };
+                }
+                pub fn add(&self, i:i64) -> f64 {
+                    return self.multi() + i;
+                }
+                fn multi(&self) -> f64 {
+                    return self.public * 4
+                }
+            }
+            let a:Test = Test::new();
+            a.add(2)"#, Some(Object::F64(10.0))
+            ),
+            (r#"
+            class Test {
+                private:i64;
+                pub public:f64;
+                pub fn new() -> Test {
+                    return Test {
+                        private: 1,
+                        public: 2
+                    };
+                }
+                pub fn add(&self, i:i64) -> f64 {
+                    return self.multi() + i;
+                }
+                fn multi(&self) -> f64 {
+                    return self.public * 4
+                }
+            }
+            let a:Test = Test::new();
+            a.multi()"#, Some(Object::Error(format!("The method is inaccessible or does not exist.")))
+            ),
+        ];
+
+        for (input, expect) in tests {
+            let mut e = Interpreter::new();
             let t = Tokenizer::new(input).tokenize();
-            println!("{:?}",t);
             let p = Parser::new(&t).parse();
-            println!("{:?}",p);
-            assert_eq!(expect, e.eval(p));
+            let eval= e.eval(p);
+            assert_eq!(expect, eval);
         }
     }
 }

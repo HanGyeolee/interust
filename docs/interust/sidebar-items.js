@@ -1,1 +1,0 @@
-window.SIDEBAR_ITEMS = {"enum":["Object","Token"],"mod":["ast","vm"],"struct":["InterustCompiler","InterustVM"],"type":["Program"]};
