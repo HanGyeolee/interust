@@ -649,17 +649,17 @@ impl<'a> Parser<'a> {
                     _ => {}
                 };
             }
-        }
-        match self.future_token() {
-            Token::CallMember => {
-                self.consume_token();
-                left = self.parse_call_class_member_expression(left.unwrap(), precedence.clone());
-            },
-            Token::CallStaticMember => {
-                self.consume_token();
-                left = self.parse_call_class_static_member_expression(left.unwrap());
+            match self.future_token() {
+                Token::CallMember => {
+                    self.consume_token();
+                    left = self.parse_call_class_member_expression(left.unwrap(), precedence.clone());
+                },
+                Token::CallStaticMember => {
+                    self.consume_token();
+                    left = self.parse_call_class_static_member_expression(left.unwrap());
+                }
+                _ => {},
             }
-            _ => {},
         }
         // Infix
         while !self.peek_token_is(&Token::Semicolon) && precedence < self.peek_token_precedence() {
