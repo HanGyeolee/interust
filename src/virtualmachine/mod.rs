@@ -95,19 +95,19 @@ impl VM {
         let opcode = self.read_byte();
         match opcode {
             0x50 => self.op_let_statement(),
-            0x53 => self.op_return_statement(),
+            0x54 => self.op_return_statement(),
             code => self.op_expression(code),
         }
     }
 
     fn op_let_statement(&mut self) {
-        // from to[0x54 addr type]
+        // from to[0x55 addr type]
         self.op_expression_read();//.unwrap_or_else(|| VMObejct::Error(String::from("RuntimeError: let의 초기화 값에 오류가 있습니다.")));
         self.op_define_variable();
     }
 
     fn op_return_statement(&mut self) {
-        // 0x53 exp
+        // 0x54 exp
         self.op_expression_read();
         let frame = self.call_stack.pop().expect("Call Stack Underflow");
         self.ip = frame.return_address;
@@ -116,14 +116,14 @@ impl VM {
 
     fn op_expression(&mut self, opcode:u8) {
         match opcode {
-            0x55 => self.op_identifier_expression(),
-            0x56 => self.op_insert_expression(),
-            0x57 => self.op_if_expression(),
+            0x56 => self.op_identifier_expression(),
+            0x57 => self.op_insert_expression(),
+            0x58 => self.op_if_expression(),
             0x51 => self.op_function_expression(),
-            0x58 => self.op_call_expression(),
+            0x5C => self.op_call_expression(),
             /*
-            0x58 => self.op_call(),
-            0x5A => self.op_prefix(),
+            0x5C => self.op_call(),
+            0x59 => self.op_prefix(),
             0xFF => break, // Halt*/
             0x01..=0x0F => self.op_literal_expression(),
             0x20..=0x2C => self.op_infix_expression(opcode),
@@ -143,19 +143,19 @@ impl VM {
     }
 
     fn op_load_variable(&mut self) -> usize{
-        // 0x55 변수 로드 = addr
+        // 0x56 변수 로드 = addr
         let opcode = self.read_byte();
         match opcode {
-            0x55 => self.read_u16() as usize,
+            0x56 => self.read_u16() as usize,
             _ => panic!("RuntimeError: 알 수 없는 바이트 코드: {}", opcode),
         }
     }
 
     fn op_define_variable(&mut self){
-        // 0x54 type
+        // 0x55 type
         let opcode = self.read_byte();
         match opcode {
-            0x54 => {
+            0x55 => {
                 let typ = self.op_type();
 
                 let value = self.pop_register();
@@ -167,7 +167,7 @@ impl VM {
     }
 
     fn op_function_expression(&mut self) {
-        // return params_length body_length| params[0x54 type, 0x54 type, ...] body
+        // return params_length body_length| params[0x55 type, 0x55 type, ...] body
         self.read_byte();
         let param_count = self.read_u16() as usize;
         let body_size = self.read_u16() as usize;
@@ -350,7 +350,7 @@ impl VM {
     Insert 삽입문
      */
     fn op_insert_expression(&mut self) {
-        // 0x56 from to[0x55 addr]
+        // 0x57 from to[0x56 addr]
         self.op_expression_read();
         let value = self.pop_register();
         let index = self.op_load_variable();
@@ -393,7 +393,7 @@ impl VM {
      IF 조건문 연산
      */
     fn op_if_expression(&mut self) {
-        // 0x57 cond cons_size alter_size cons (alter)
+        // 0x58 cond cons_size alter_size cons (alter)
         self.op_expression_read();
         let condition = self.pop_register();
         let true_branch_size = self.read_u16() as usize;
@@ -414,7 +414,7 @@ impl VM {
     }
 
     fn op_call_expression(&mut self) {
-        // addr args_length args[0x55 index, 0x55 index, ...]
+        // addr args_length args[0x56 index, 0x56 index, ...]
         let function_index = self.read_u16() as usize;
         let arg_count = self.read_u16() as usize;
 
@@ -467,7 +467,7 @@ impl VM {
         let end = self.call_stack.len();
         self.call_stack.push(frame);
         self.ip = function_index;
-        // params[0x54 type, 0x54 type, ...] body
+        // params[0x55 type, 0x55 type, ...] body
         for _ in 0..arg_count {
             self.op_define_variable();
         }
