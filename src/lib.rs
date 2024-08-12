@@ -8,7 +8,7 @@
 //! # 사용 가능한 변수 타입
 //! - *i64* : 64bit 부호있는 정수
 //! - *f64* : 64bit 부호있는 부동소수점
-//! - *bool* ( *Bool* | *boolean* ) : 1bit 논리값 = ``[true, True, TRUE, false, ...]``
+//! - *bool* ( *Bool* | *boolean* ) : 1bit 논리값 = ``[true, false]``
 //! - *str* ( *String* ) : 문자열 = 길이 제한 `usize`의 최대값 > Rust에서 `&str`이 아닌 `String`으로 변수 저장
 //!
 //! # 클래스 선언 지원
