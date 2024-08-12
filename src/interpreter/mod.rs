@@ -5,6 +5,7 @@ use crate::interpreter::environment::*;
 use crate::{Expression, Infix, Literal, Object, Prefix, Program, Statement, Type};
 
 pub mod environment;
+pub mod optimizer;
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -173,6 +174,10 @@ impl Interpreter {
                 consequence,
                 alternative,
             } => self.eval_if_expression(*condition, consequence, alternative),
+            Expression::While { condition, body} => {
+                self.eval_while_expression(*condition, body);
+                None
+            }
             Expression::Call {
                 identifier,
                 arguments,
@@ -249,11 +254,11 @@ impl Interpreter {
      */
     fn eval_literal(&mut self, literal: Literal) -> Object {
         match literal {
-            Literal::String(value) => Object::String(value),
-            Literal::F64(value) => Object::F64(value),
+            Literal::None => Object::Null,
             Literal::I64(value) => Object::I64(value),
+            Literal::F64(value) => Object::F64(value),
             Literal::Bool(value) => Object::Bool(value),
-            Literal::None => Object::Null
+            Literal::String(value) => Object::String(value),
         }
     }
 
@@ -507,6 +512,24 @@ impl Interpreter {
         }
     }
 
+    /// while 반복문 연결
+    fn eval_while_expression(&mut self,
+         condition: Expression,
+         body:Vec<Statement>
+    ) {
+        loop {
+            let is_loop = match self.eval_expression(condition.clone()) {
+                Some(condition) => condition,
+                None => break,
+            };
+
+            if is_truthy(&is_loop) {
+                self.eval_block_statement(body.clone());
+            } else {
+                break;
+            }
+        }
+    }
 
     /**
     함수 실행 연결
@@ -1096,6 +1119,38 @@ mod tests {
             let p = Parser::new(&t).parse();
             let eval= e.eval(p);
             assert_eq!(expect, eval);
+        }
+    }
+
+    #[test]
+    fn test_while() {
+        let tests = vec![
+            (r#"
+            let n:i64 = 5;
+            let sum:i64 = 0;
+
+            while (n > 0) {
+                sum = sum + n;
+                n = n - 1;
+            }
+            sum
+            "#, Some(Object::I64(15))
+            ),
+            (r#"
+            let n:f64 = 5;
+            let sum:f64 = 1.0;
+
+            while (n > 0) {
+                sum = sum * n;
+                n = n - 1.0;
+            }
+            sum
+            "#, Some(Object::F64(120.0))
+            ),
+        ];
+
+        for (input, expect) in tests {
+            assert_eq!(expect, eval(input));
         }
     }
 }

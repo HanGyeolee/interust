@@ -557,8 +557,7 @@ mod test {
         let program = parser.parse();
         println!("{:?}", program);
 
-        let mut compiler = Compiler::new();
-        let compiled = compiler.compile(program);
+        let compiled = Compiler::compile(program);
         println!("{:02x?}", compiled.bytecode);
 
         let mut vm:VM = VM::new();
@@ -584,8 +583,7 @@ mod test {
         let program = parser.parse();
         println!("{:?}", program);
 
-        let mut compiler = Compiler::new();
-        let compiled = compiler.compile(program);
+        let compiled = Compiler::compile(program);
         println!("{:02x?}", compiled.bytecode);
 
         let mut virtual_m:VM = VM::new();
@@ -612,8 +610,7 @@ mod test {
         let program = parser.parse();
         println!("{:?}", program);
 
-        let mut compiler = Compiler::new();
-        let compiled = compiler.compile(program);
+        let compiled = Compiler::compile(program);
         println!("{:02x?}", compiled.bytecode);
 
         let mut virtual_m:VM = VM::new();

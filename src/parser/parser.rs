@@ -54,8 +54,10 @@ impl<'a> Parser<'a> {
                     _ => Precedence::Lowest
                 }
             }
+            Token::OpenParen => Precedence::Paren,
+            Token::OpenBrace => Precedence::Brace,
             //Token::OpenBracket | Token::OpenBrace |
-            Token::OpenParen | Token::CallStaticMember | Token::CallMember => Precedence::Call,
+            Token::CallStaticMember | Token::CallMember => Precedence::Call,
             _ => Precedence::Lowest,
         }
     }

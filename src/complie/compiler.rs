@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Write;
 use crate::complie::compile::{Compile, Compiling};
 use crate::{Constant, Program, Scope, Statement};
+use crate::interpreter::optimizer::Optimizer;
 
 #[derive(Debug)]
 pub struct Compiler;
@@ -9,18 +10,15 @@ pub struct Compiler;
 pub const MAGIC_NUMBER: &[u8] = b"RVMB";
 
 impl Compiler {
-    pub fn new() -> Self {
-        Compiler
-    }
-
-    pub fn compile(&mut self, program: Program) -> Compiling{
+    pub fn compile(program: Program) -> Compiling{
         let mut compiling = Compiling::new();
+        let program = Optimizer::optimize(program);
         program.iter().for_each(|stmt| stmt.compile(&mut compiling));
 
         compiling
     }
 
-    pub fn export(&mut self, file_path:&str, program: Program){
+    pub fn export(file_path:&str, program: Program){
         let removed = program.into_iter().filter(|x| {
             return match x {
                 Statement::Let {..} => true,
@@ -29,25 +27,25 @@ impl Compiler {
                 _ => false,
             };
         }).collect();
-        let compiling:Compiling = self.compile(removed);
-        self.export_from(file_path, &compiling);
+        let compiling:Compiling = Self::compile(removed);
+        Self::export_from(file_path, &compiling);
     }
 
-    fn export_from(&mut self, file_path:&str, compiling: &Compiling) {
+    fn export_from(file_path:&str, compiling: &Compiling) {
         let mut byte_code:Vec<u8> = vec![];
         // File Header
         byte_code.write_all(MAGIC_NUMBER).expect("매직 넘버 작성 실패");
         byte_code.write_all(&[0x00, 0x01, 0x00]).expect("파일 버전 크기 작성 실패"); // Version 1
 
         // Constant Pool
-        self.write_constant_pool(&mut byte_code, &compiling.constants);
+        Self::write_constant_pool(&mut byte_code, &compiling.constants);
 
         // Code Section
-        self.write_code_section(&mut byte_code, &compiling.bytecode);
+        Self::write_code_section(&mut byte_code, &compiling.bytecode);
 
         let (first_scope, _) = &compiling.scopes[0];
         // Scope Information
-        self.write_scope_info(&mut byte_code, first_scope);
+        Self::write_scope_info(&mut byte_code, first_scope);
 
         // println!("{:02x?}", byte_code);
 
@@ -55,7 +53,7 @@ impl Compiler {
         file.write_all(byte_code.as_slice()).expect("버퍼 작성 실패");
     }
 
-    fn write_constant_pool(&self, binary: &mut Vec<u8>, constant_pool: &[Constant]) {
+    fn write_constant_pool(binary: &mut Vec<u8>, constant_pool: &[Constant]) {
         binary.write_all(&(constant_pool.len() as u16).to_le_bytes()).expect("Failed to write constant pool size");
         for constant in constant_pool {
             match constant {
@@ -81,12 +79,12 @@ impl Compiler {
         }
     }
 
-    fn write_code_section(&self, binary: &mut Vec<u8>, bytecode: &[u8]) {
+    fn write_code_section(binary: &mut Vec<u8>, bytecode: &[u8]) {
         binary.write_all(&bytecode.len().to_le_bytes()).expect("바이트 코드 크기 작성 실패");
         binary.write_all(bytecode).expect("바이트 코드 작성 실패");
     }
 
-    fn write_scope_info(&self, binary: &mut Vec<u8>, scope: &Scope) {
+    fn write_scope_info(binary: &mut Vec<u8>, scope: &Scope) {
         binary.write_all(&(scope.table.len() as u16).to_le_bytes()).expect("식별자 개수 작성 실패");
         for (name, (addr, _)) in &scope.table {
             binary.write_all(&(name.len() as u8).to_le_bytes()).expect("식별자 문자열 크기 작성 실패");
@@ -126,8 +124,7 @@ mod test {
         let program = parser.parse();
         println!("{:02x?}", program);
 
-        let mut compiler = Compiler::new();
-        let byte_code = compiler.compile(program);
+        let byte_code = Compiler::compile(program);
 
         println!("{:?}", byte_code);
     }
@@ -152,7 +149,6 @@ mod test {
         let mut parser = Parser::new(&tokens);
         let program = parser.parse();
 
-        let mut compiler = Compiler::new();
-        compiler.export("test.irs", program);
+        Compiler::export("test.irs", program);
     }
 }
