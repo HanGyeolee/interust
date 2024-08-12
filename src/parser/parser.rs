@@ -595,21 +595,18 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_block_statement(&mut self) -> Vec<Statement> {
-        self.consume_token();
+        self.consume_token(); // '{' 소비
 
         let mut block = Vec::new();
 
         let mut return_index:i128 = -1;
         while !self.cur_token_is(&Token::CloseBrace) && !self.cur_token_is(&Token::EOF) {
-            match self.parse_statement() {
-                Some(statement) => {
-                    match statement {
-                        Statement::Return(_) => return_index = block.len() as i128,
-                        _ => {},
-                    }
-                    block.push(statement);
-                },
-                None => {}
+            if let Some(statement) = self.parse_statement() {
+                match statement {
+                    Statement::Return(_) => return_index = block.len() as i128,
+                    _ => {},
+                }
+                block.push(statement);
             }
             self.consume_token();
         }
@@ -637,7 +634,9 @@ impl<'a> Parser<'a> {
                 }
             }
             Token::OpenParen => self.parse_grouped_expression(),
-            Token::If => self.parse_if_expression(),
+            Token::If => return self.parse_if_expression(),
+            //Token::For => return self.parse_for_expression(),
+            Token::While => return self.parse_while_expression(),
             _ => None,
         };
 
@@ -665,7 +664,7 @@ impl<'a> Parser<'a> {
             }
         }
         // Infix
-        while !self.peek_token_is(&Token::Semicolon) && precedence < self.peek_token_precedence() {
+        while !self.peek_token_is(&Token::Semicolon) && (precedence < self.peek_token_precedence()) {
             match self.future_token() {
                 Token::Assign => {
                     self.consume_token();
@@ -866,16 +865,19 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_if_expression(&mut self) -> Option<Expression> {
-        self.consume_token();
+        self.consume_token(); // 'if' 키워드 소비
 
         let condition = match self.parse_expression(Precedence::Lowest) {
             Some(expr) => expr,
             None => return None,
         };
 
+        print!("{:?}", self.current_token());
         if !self.expect_peek(&Token::OpenBrace) {
             return None;
         }
+        self.consume_token();
+        println!("{:?}", self.current_token());
 
         let consequence = self.parse_block_statement();
         let mut alternative = None;
@@ -904,6 +906,26 @@ impl<'a> Parser<'a> {
             condition: Box::new(condition),
             consequence,
             alternative,
+        })
+    }
+
+    fn parse_while_expression(&mut self) -> Option<Expression> {
+        self.consume_token(); // 'while' 키워드 소비
+
+        let condition = match self.parse_expression(Precedence::Call) {
+            Some(expr) => expr,
+            None => return None,
+        };
+
+        if !self.expect_peek(&Token::OpenBrace) {
+            return None;
+        }
+
+        let body = self.parse_block_statement();
+
+        Some(Expression::While {
+            condition: Box::new(condition),
+            body,
         })
     }
 
@@ -1089,6 +1111,54 @@ mod test {
                 self.public = self.public * 5;
             }
         }
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+        println!("{:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_if() {
+        let input = r#"
+            fn add(a, b) -> i64 {
+                return a + b;
+            }
+
+            let a:i64 = 1;
+            let b:f64 = 1.5;
+
+            if (a < b) {
+                a = add(a, b);
+            }
+        "#;
+
+        let mut tokenizer = Tokenizer::new(input);
+        let tokens = tokenizer.tokenize();
+        println!("{:?}", tokens);
+        let mut parser = Parser::new(&tokens);
+        let program = parser.parse();
+        println!("{:?}", program);
+        println!("{:?}", parser.errors);
+    }
+
+    #[test]
+    fn test_while() {
+        let input = r#"
+            fn add(a, b) -> i64 {
+                return a + b;
+            }
+
+            let a:i64 = 1;
+            let b:f64 = 1.5;
+
+            while (a > b) {
+                a = a - 1;
+            }
         "#;
 
         let mut tokenizer = Tokenizer::new(input);
