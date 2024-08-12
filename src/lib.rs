@@ -47,7 +47,6 @@ mod virtualmachine;
 /// 쉬운 생성 및 쉬운 컴파일링이 가능합니다.
 pub struct InterustCompiler {
     interpreter: Interpreter,
-    compiler: Compiler,
     program: Program,
 }
 
@@ -64,7 +63,6 @@ impl InterustCompiler {
     pub fn new() -> Self {
         InterustCompiler {
             interpreter: Interpreter::new(),
-            compiler: Compiler::new(),
             program: Program::new()
         }
     }
@@ -257,7 +255,7 @@ impl InterustCompiler {
         if !file_path.ends_with(".irs") {
             path = format!("{0}.irs",file_path);
         };
-        self.compiler.export(path.as_str(), self.program.clone());
+        Compiler::export(path.as_str(), self.program.clone());
     }
 
     pub fn export_from_program(&mut self, file_path:&str, program:Program) {
@@ -265,7 +263,7 @@ impl InterustCompiler {
         if !file_path.ends_with(".irs") {
             path = format!("{0}.irs",file_path);
         };
-        self.compiler.export(path.as_str(), program);
+        Compiler::export(path.as_str(), program);
     }
 
     pub fn export_from_tokens(&mut self, file_path:&str, tokens:&Vec<Token>) {
@@ -693,13 +691,13 @@ pub enum Token {
 /// 해석기에서 프로그램을 실행할 때 사용할 객체들
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
-    F64(f64),
+    Null,
     I64(i64),
+    F64(f64),
     Bool(bool),
     String(String),
     Ref(usize),
     //LibraryFn(fn(Vec<Object>) -> Object),
-    Null,
     ReturnValue(Box<Object>),
     Error(String),
 }
@@ -707,8 +705,8 @@ pub enum Object {
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Object::F64(ref value) => write!(f, "{value}f64"),
             Object::I64(ref value) => write!(f, "{value}i64"),
+            Object::F64(ref value) => write!(f, "{value}f64"),
             Object::Bool(ref value) => write!(f, "{value}"),
             Object::String(ref value) => write!(f, "{value}"),
             Object::Ref(ref id) => write!(f, "Ref:{id}"),
@@ -797,6 +795,7 @@ impl Object {
 
 /// # 인터프리터에서 활용할 추상 구문 트리(AST)
 pub mod ast {
+    use std::fmt;
     use std::ops::{BitOr, BitOrAssign};
     use crate::Object;
 
@@ -823,11 +822,23 @@ pub mod ast {
     impl Literal{
         pub fn get_type(&self) -> Type{
             match self {
-                Literal::F64(_) => Type::F64,
-                Literal::I64(_) => Type::I64,
-                Literal::String(_) => Type::String,
-                Literal::Bool(_) => Type::Bool,
                 Literal::None => Type::None,
+                Literal::I64(_) => Type::I64,
+                Literal::F64(_) => Type::F64,
+                Literal::Bool(_) => Type::Bool,
+                Literal::String(_) => Type::String,
+            }
+        }
+    }
+
+    impl fmt::Display for Literal {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match *self {
+                Literal::None => write!(f, "null"),
+                Literal::I64(ref v) => write!(f, "0x{:016X}i64", v),
+                Literal::F64(ref v) => write!(f, "0x{:016X}f64", v.to_bits()),
+                Literal::Bool(v) => write!(f, "{}", v),
+                Literal::String(ref v) => write!(f, "{}", v),
             }
         }
     }
@@ -988,16 +999,18 @@ pub mod ast {
     /// AST 우선순위
     #[derive(PartialEq, PartialOrd, Clone)]
     pub enum Precedence {
-        Lowest,
-        Assign,         // =
-        Bool,           // && or ||
-        Equals,         // == or !=
-        LessGreater,    // > or <
-        Sum,            // +
-        Product,        // *
-        Bit,            // & or |
-        Prefix,         // -X or !X
-        Call,           // myFunction(X)
+        Lowest      = 0x00,
+        Assign      = 0x01, // =
+        Bool        = 0x02, // && or ||
+        Bit         = 0x03, // & or |
+        Equals      = 0x04, // == or !=
+        LessGreater = 0x05, // > or <
+        Sum         = 0x06, // +
+        Product     = 0x07, // *
+        Prefix      = 0x08, // -X or !X
+        Paren       = 0x09, // (, )
+        Brace       = 0x0A, // {, }
+        Call        = 0x0B, // myFunction(X)
     }
 
     /// AST 클래스 멤버 접근 권한
