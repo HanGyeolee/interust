@@ -928,11 +928,11 @@ pub mod ast {
     /// AST 상태
     #[derive(Debug, PartialEq, Clone)]
     pub enum Statement {
-        Let{                                // 0x50 from to[0x54 addr type]
+        Let{                                // 0x50 from to[0x55 addr type]
             variable: Expression,
             expression: Option<Expression>
         },
-        Fn {                                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+        Fn {                                // 0x51 return params_length body_size params[0x55 addr type, 0x55 addr type, ...] body
             identifier: String,
             return_type: Type,
             parameters: Vec<Expression>,
@@ -942,37 +942,52 @@ pub mod ast {
             identifier: String,
             members: Vec<ClassMember>
         },
-        Return(Expression),                 // 0x53 exp
+        /*Impl {                              // 0x53
+            identifier: String,
+            members: Vec<ClassMember>
+        },*/
+        Return(Expression),                 // 0x54 exp
         Expression(Expression),
     }
 
     /// AST 구문
     #[derive(Debug, PartialEq, Clone)]
     pub enum Expression {
-        Variable(String, Type),             // 0x54 type
-        Identifier(String),                 // 변수 로드 = 0x55 addr
-        Insert {                            // 0x56 from to
+        Variable(String, Type),             // 0x55 type
+        Identifier(String),                 // 변수 로드 = 0x56 addr
+        Insert {                            // 0x57 from to
             variable:  Box<Expression>,
             expression: Box<Expression>
         },
-        If {                                // 0x57 cond cons_length alter_length cons (alter)
+        If {                                // 0x58 cond cons_length alter_length cons (alter)
             condition: Box<Expression>,
             consequence: Vec<Statement>,
             alternative: Option<Vec<Statement>>,
         },
-        Call {                              // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
+        /*For {                               // 0x59
+            init: Option<Statement>,
+            condition: Option<Expression>,
+            update: Option<Expression>,
+            body: Vec<Statement>
+        },*/
+        While {                             // 0x5A
+            condition: Box<Expression>,
+            body: Vec<Statement>
+        },
+        // match
+        Call {                              // 0x5C addr args_length args[0x56 index, 0x56 index, ...]
             identifier: String,
             arguments: Vec<Expression>,
         },
-        CallMember {                        // 0x59
+        CallMember {                        // 0x5D
             identifier: String,
             call: Box<Expression>,
         },
-        CallStaticMember {                  // 0x60
+        CallStaticMember {                  // 0x5E
             identifier: String,
             call: Box<Expression>,
         },
-        ClassInstance {                     // 0x61
+        ClassInstance {                     // 0x5F
             identifier: String,
             inits: Vec<Expression>
         },
@@ -986,18 +1001,18 @@ pub mod ast {
     }
 
     /// AST 우선순위
-    #[derive(PartialEq, PartialOrd, Clone)]
+    #[derive(PartialEq, PartialOrd, Clone, Debug)]
     pub enum Precedence {
-        Lowest,
-        Assign,         // =
-        Bool,           // && or ||
-        Equals,         // == or !=
-        LessGreater,    // > or <
-        Sum,            // +
-        Product,        // *
-        Bit,            // & or |
-        Prefix,         // -X or !X
-        Call,           // myFunction(X)
+        Lowest      = 0x00,
+        Assign      = 0x01, // =
+        Bool        = 0x02, // && or ||
+        Bit         = 0x03, // & or |
+        Equals      = 0x04, // == or !=
+        LessGreater = 0x05, // > or <
+        Sum         = 0x06, // +
+        Product     = 0x07, // *
+        Prefix      = 0x08, // -X or !X
+        Call        = 0x09, // myFunction(X)
     }
 
     /// AST 클래스 멤버 접근 권한

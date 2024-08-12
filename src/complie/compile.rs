@@ -117,7 +117,7 @@ impl Compile for Type {
                     };
 
                     if let Some(addr) = addr_opt {
-                        compiler.emit(0x55); // 변수 로드 = 0x55 addr
+                        compiler.emit(0x56); // 변수 로드 = 0x56 addr
                         compiler.emit_u16(addr as u16);
                         not_found = false;
                         break;
@@ -156,7 +156,7 @@ impl Compile for Statement {
     fn compile(&self, compiler: &mut Compiling){
         match self {
             Statement::Let{variable, expression} => {
-                // 0x50 from to[0x54 addr type]
+                // 0x50 from to[0x55 addr type]
                 compiler.emit(0x50); // LET
                 if let Some(expression) = expression {
                     expression.compile(compiler);
@@ -175,7 +175,7 @@ impl Compile for Statement {
                     scope.table.insert(identifier.clone(), (func_index, return_type.clone()));
                 };
 
-                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+                // 0x51 return params_length body_size params[0x55 addr type, 0x55 addr type, ...] body
                 compiler.emit(0x51);
                 return_type.compile(compiler);
 
@@ -231,7 +231,7 @@ impl Compile for Statement {
                 compiler.emit_u16(member_methods.len() as u16);
             }
             Statement::Return(value) => {
-                compiler.emit(0x53); // RETURN
+                compiler.emit(0x54); // RETURN
                 value.compile(compiler);
             }
             Statement::Expression(value) => {
@@ -243,7 +243,7 @@ impl Compile for Statement {
         let mut length = 0;
         match self {
             Statement::Let{variable, expression} => {
-                // 0x50 from to[0x54 addr type]
+                // 0x50 from to[0x55 addr type]
                 length += 1;
                 if let Some(expression) = expression {
                     length += expression.get_length();
@@ -253,7 +253,7 @@ impl Compile for Statement {
                 length += variable.get_length();
             }
             Statement::Fn {parameters, body, return_type, .. } => {
-                // 0x51 return params_length body_size params[0x54 addr type, 0x54 addr type, ...] body
+                // 0x51 return params_length body_size params[0x55 addr type, 0x55 addr type, ...] body
                 length += 1;
                 length += return_type.get_length();
                 length += 4;
@@ -292,8 +292,8 @@ impl Compile for Expression {
                     scope.table.insert(name.clone(), (index, typ.clone()));
                 };
 
-                // 0x54 type
-                compiler.emit(0x54);
+                // 0x55 type
+                compiler.emit(0x55);
                 typ.compile(compiler);
             }
             Expression::Identifier(name) => {
@@ -307,7 +307,7 @@ impl Compile for Expression {
                     };
 
                     if let Some(addr) = addr_opt {
-                        compiler.emit(0x55); // 변수 로드 = 0x55 addr
+                        compiler.emit(0x56); // 변수 로드 = 0x56 addr
                         compiler.emit_u16(addr as u16);
                         not_found = false;
                         break;
@@ -320,14 +320,14 @@ impl Compile for Expression {
                 }
             }
             Expression::Insert{variable, expression} => {
-                // 0x56 from to
-                compiler.emit(0x56);
+                // 0x57 from to
+                compiler.emit(0x57);
                 expression.compile(compiler);
                 variable.compile(compiler);
             }
             Expression::If{condition, consequence, alternative} => {
-                // 0x57 cond cons_size alter_size cons (alter)
-                compiler.emit(0x57);
+                // 0x58 cond cons_size alter_size cons (alter)
+                compiler.emit(0x58);
                 condition.compile(compiler);
 
                 {
@@ -365,9 +365,12 @@ impl Compile for Expression {
                     compiler.pop_scope();
                 }
             }
+            Expression::While {condition, body} => {
+
+            },
             Expression::Call { identifier, arguments} => {
-                // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
-                compiler.emit(0x58);
+                // 0x5C addr args_length args[0x56 index, 0x56 index, ...]
+                compiler.emit(0x5C);
                 let mut index = compiler.scope_index as i128;
                 let mut not_found = true;
 
@@ -423,7 +426,7 @@ impl Compile for Expression {
         let mut length = 0;
         match self {
             Expression::Variable(_, typ) => {
-                // 0x54 type
+                // 0x55 type
                 length += 1;
                 length += typ.get_length();
             }
@@ -450,8 +453,11 @@ impl Compile for Expression {
                     }
                 }
             }
+            Expression::While {condition, body} => {
+
+            }
             Expression::Call {arguments, ..} => {
-                // 0x58 addr args_length args[0x55 index, 0x55 index, ...]
+                // 0x5C addr args_length args[0x56 index, 0x56 index, ...]
                 length += 1;
                 length += 4;
                 for stmt in arguments {
